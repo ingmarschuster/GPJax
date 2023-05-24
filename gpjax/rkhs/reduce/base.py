@@ -1,15 +1,13 @@
-"""
-Created on Thu Jan 10 10:01:56 2019
-
-@author: Ingmar Schuster
-"""
-
-
 from dataclasses import dataclass
-from typing import Callable, List, TypeVar
 from abc import ABC, abstractmethod
-
+from jaxtyping import Float, Array, Int
+from beartype.typing import Union, Callable, List, TypeVar, Tuple
 import jax.numpy as np
+from gpjax.typing import ScalarInt, ScalarFloat, ScalarBool
+
+ReduceOrArray = TypeVar("ReduceOrArray", "AbstractReduce", Float[Array, "N M"])
+
+NumberOrArray = TypeVar("NumberOrArray", Float[Array, "N M"], ScalarInt, ScalarFloat)
 
 
 def tile_view(inp: np.ndarray, reps: int) -> np.ndarray:
@@ -33,26 +31,12 @@ def tile_view(inp: np.ndarray, reps: int) -> np.ndarray:
         (reps * inp.shape[0], inp.shape[1])
     )
 
-ReduceOrArray = TypeVar("ReduceOrArray", bound=["AbstractReduce", Float[Array])
 
-class AbstractReduce(Callable, ABC):
+class AbstractReduce(ABC):
     """The abstract base class for reductions."""
 
-    def __call__(self, inp: Array, axis: int = 0) -> Array:
-        """Call the reduction.
-
-        Args:
-            inp (Array): The array to reduce. Typically a gram matrix.
-            axis (int, optional): Axis to apply reduction over. Defaults to 0.
-
-        Returns:
-            Array: The reduced array.
-        """
-        rval = self.reduce_first_ax(np.swapaxes(inp, axis, 0))
-        return np.swapaxes(rval, axis, 0)
-
     @abstractmethod
-    def reduce_first_ax(self, inp: Array) -> Array:
+    def __matmul__(self, inp: Array) -> Array:
         """Reduce the first axis of the input matrix.
 
         Args:
@@ -75,43 +59,6 @@ class AbstractReduce(Callable, ABC):
         """
         pass
 
-    @classmethod
-    def apply(cls, inp: Array, reduce: List["AbstractReduce"] = None, axis=0) -> Array:
-        """Apply a list of reductions to an array.
-
-        Args:
-            inp (Array): Input array, typically a gram matrix.
-            reduce (List[Reduce], optional): The reductions to apply. Defaults to None.
-            axis (int, optional): Axis to apply reductions over. Defaults to 0.
-
-        Returns:
-            Array: Reduced array.
-        """
-        if reduce is None or len(reduce) == 0:
-            return inp
-        else:
-            carry = np.swapaxes(inp, axis, 0)
-            for gr in reduce:
-                carry = gr.reduce_first_ax(carry)
-            return np.swapaxes(carry, axis, 0)
-
-    @classmethod
-    def final_len(cls, original_len: int, reduce: List["AbstractReduce"] = None) -> int:
-        """Return the final length of an array after applying a list of reductions.
-
-        Args:
-            original_len (int): Original length of the array.
-            reduce (List[Reduce], optional): List of reductions to apply. Defaults to None, in which case `original_len` is returned.
-
-        Returns:
-            int: Final length of the array after applying the reductions.
-        """
-        carry = original_len
-        if reduce is not None:
-            for gr in reduce:
-                carry = gr.new_len(carry)
-        return carry
-
 
 @dataclass
 class ChainedReduce(AbstractReduce):
@@ -132,7 +79,9 @@ class ChainedReduce(AbstractReduce):
 
         self.reductions = reductions_list
 
-    def __execute_chain(self, func: callable, start_val):
+    def __execute_chain(
+        self, func: Callable, start_val: NumberOrArray
+    ) -> NumberOrArray:
         carry = start_val
         for gr in self.reductions[::-1]:
             carry = func(gr, carry)
@@ -170,7 +119,7 @@ class ChainedReduce(AbstractReduce):
 class LinearReduce(AbstractReduce):
     """Reduction defined by a linear map."""
 
-    linear_map: Float[Array]
+    linear_map: Float[Array, "N M"]
 
     def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
         """Reduce the first axis of the input matrix.
@@ -187,7 +136,7 @@ class LinearReduce(AbstractReduce):
             raise ValueError(
                 "LinearReduce expects a 2D array, got %dD" % len(inp.shape)
             )
-        if self.linear_map.shape[-1] != inp.shape[0]
+        if self.linear_map.shape[-1] != inp.shape[0]:
             raise ValueError(
                 "LinearReduce expects a matrix with %d columns, got %d"
                 % (self.linear_map.shape[1], inp.shape[0])
@@ -211,17 +160,20 @@ class LinearReduce(AbstractReduce):
 
     @classmethod
     def sum_from_unique(
-        cls, input: Array, mean: bool = True, axis: int = None
-    ) -> tuple[np.array, np.array, "LinearReduce"]:
+        cls,
+        input: Float[Array, "N ..."],
+        mean: ScalarBool = True,
+        axis: ScalarInt = None,
+    ) -> Tuple[Float[Array, "K ..."], Int[Array, "K"], "LinearReduce"]:
         """Find unique vectors in `input` along `axis`, return the unique data points, their counts and a linear reduction that multiplies the (now unique) vectors by their counts.
 
         Args:
-            input (np.array): The input array.
+            input (Float[Array, "N M"]): Input array.
             mean (bool, optional): Average the values if True, sum them if False. Defaults to True.
             axis (int, optional): Axis to find unique vectors along. Defaults to None, in which case the flattened array is used.
 
         Returns:
-            tuple[np.array, np.array, "LinearReduce"]: The unique rows, their counts and the linear reduction.
+            Tuple[Float[Array, "K M"], Float[Array, "K"], "LinearReduce"]: The unique rows, their counts and the linear reduction.
 
         Example:
             >>> import jax.numpy as np
@@ -325,7 +277,8 @@ class NoReduce(AbstractReduce):
 @dataclass
 class Prefactors(AbstractReduce):
     """Multiply the input array with a set of prefactors"""
-    prefactors: Float[Array "N"]
+
+    prefactors: Float[Array, "N"]
 
     def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
         """Multiply the input array with the prefactors.
@@ -352,7 +305,7 @@ class Prefactors(AbstractReduce):
         """
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
-        if self.prefactors.shape[0] != inp.shape[axis]
+        if self.prefactors.shape[0] != inp.shape[axis]:
             raise ValueError(
                 f"Prefactors shape {self.prefactors.shape} does not match input shape {inp.shape} along axis {axis}"
             )
@@ -369,7 +322,7 @@ class Prefactors(AbstractReduce):
         Returns:
             int: Length of the array after reduction.
         """
-        if original_len != len(self.prefactors)
+        if original_len != len(self.prefactors):
             raise ValueError(
                 f"Prefactors shape {self.prefactors.shape} does not match input shape {original_len}"
             )
@@ -379,14 +332,15 @@ class Prefactors(AbstractReduce):
 @dataclass
 class Scale(AbstractReduce):
     """Scale the input array by a constant factor."""
-        s:Float
+
+    s: ScalarFloat
 
     def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
         """Scale the input array.
 
         Args:
             inp (ReduceOrArray): Input array, typically a gram matrix.
-            
+
 
         Returns:
             ReduceOrArray: Scaled input array.
@@ -394,7 +348,6 @@ class Scale(AbstractReduce):
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
         return inp * self.s
-
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -407,10 +360,12 @@ class Scale(AbstractReduce):
         """
         return original_len
 
+
 @dataclass
 class Repeat(AbstractReduce):
     """Repeat the input array."""
-        times:int
+
+    times: int
 
     def __post_init__(self, times: int):
         """This reduction will repeat the input array `times` times.
@@ -434,7 +389,6 @@ class Repeat(AbstractReduce):
             return ChainedReduce([self, inp])
         return np.repeat(inp, 0)
 
-
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
 
@@ -450,13 +404,13 @@ class Repeat(AbstractReduce):
 @dataclass
 class TileView(LinearizableReduce):
     """Tile the input array. This reduction provides a view on the input array, avoiding data copy."""
-    result_len:int
+
+    result_len: int
 
     def __post_init__(self):
         """This reduction will tile the input array `result_len` times."""
         if self.result_len < 2:
             raise ValueError("TileView result_len must be greater than 1")
-        
 
     def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
         """Reduce the first axis of the input array by tiling it.
@@ -487,8 +441,8 @@ class TileView(LinearizableReduce):
             return ChainedReduce([self, inp])
         if self.result_len % inp.shape[0] != 0:
             raise ValueError(
-            "Input can't be broadcasted to target length %d" % self.result_len
-        )
+                "Input can't be broadcasted to target length %d" % self.result_len
+            )
         return tile_view(inp, self.result_len // inp.shape[0])
 
     def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
@@ -543,7 +497,6 @@ class Sum(LinearizableReduce):
             return ChainedReduce([self, inp])
         return inp.sum(axis=0, keepdims=True)
 
-
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
 
@@ -571,7 +524,7 @@ class Sum(LinearizableReduce):
 class Mean(LinearizableReduce):
     """Average the input array."""
 
-    def __call__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
         """Average the input array.
 
         Args:
@@ -581,7 +534,7 @@ class Mean(LinearizableReduce):
             Array: Reduced input array.
         """
         if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp]
+            return ChainedReduce([self, inp])
         return np.mean(inp, axis=0, keepdims=True)
 
     def new_len(self, original_len: int) -> int:
@@ -611,8 +564,10 @@ class Mean(LinearizableReduce):
 @dataclass
 class BalancedRed(LinearizableReduce):
     """Balanced reduction of the input array. Sums up a fixed number of consecutive elements in the input array (and potentially divide by the number of elements)."""
-    points_per_split:int
-    average:bool = False
+
+    points_per_split: int
+    average: bool = False
+
     def __post_init__(self, points_per_split: int, average=False):
         """Balanced reduction of the input array. Sums up a number of consecutive elements in the input.
 
@@ -656,7 +611,6 @@ class BalancedRed(LinearizableReduce):
             np.reshape(inp, (-1, self.points_per_split, inp.shape[-1])), axis=1
         )
         return rval
-
 
     def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
         """Linear map version of `BalancedRed` reduction.
@@ -704,7 +658,6 @@ class Center(AbstractReduce):
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
         return inp - np.mean(inp, 0, keepdims=True)
-
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.

@@ -26,7 +26,7 @@ from .. import kernels
 @dataclass
 class RkhsVec(Module):
     insp_pts: Union["RkhsVec", Float[Array, "N M"]]
-    kernel: kernels.AbstractKernel = param_field(kernels.RBF())
+    k: kernels.AbstractKernel = param_field(kernels.RBF())
     reduce: red.Reduce = param_field(red.Identity())
     transpose: bool = False
 
@@ -54,7 +54,7 @@ class RkhsVec(Module):
         else:
             return self.size
 
-    def __pairwise_dot__(self, other: "RkhsVec") -> Float[Array]:
+    def __pairwise_dot__(self, other: "RkhsVec") -> Float[Array, "N M"]:
         """Compute the dot product between all pairs of elements from two RKHS vectors.
 
         Args:
@@ -66,11 +66,11 @@ class RkhsVec(Module):
         Returns:
             Float[Array]: A matrix of shape (self.size, other.size) containing the dot products.
         """
-        if self.kernel != other.kernel:
+        if self.k != other.k:
             raise TypeError(
                 f"Trying to compute inner products between elements of different RKHSs (Kernel types do not match)"
             )
-        raw_gram = self.kernel.cross_covariance(self.insp_pts, other.insp_pts)
+        raw_gram = self.k.cross_covariance(self.insp_pts, other.insp_pts)
         return self.reduce @ (other.reduce @ raw_gram.T).T
 
     def __tensor_prod__(self, other: "RkhsVec") -> "RkhsVec":
@@ -90,7 +90,7 @@ class RkhsVec(Module):
     ) -> "RkhsVec":
         return red.Mean() @ self
 
-    def __matmul__(self, other: "RkhsVec") -> Union[Float[Array], "RkhsVec"]:
+    def __matmul__(self, other: "RkhsVec") -> Union[Float[Array, "M N"], "RkhsVec"]:
         if self.is_rowvec == other.is_rowvec:
             raise ValueError(
                 f"Trying to compute matrix product between two row vectors or two column vectors"
@@ -102,10 +102,28 @@ class RkhsVec(Module):
 
     def __rmatmul__(
         self, other: Union[red.AbstractReduce, "RkhsVec"]
-    ) -> Union[Float[Array], "RkhsVec"]:
+    ) -> Union[Float[Array, "M N"], "RkhsVec"]:
         if isinstance(other, red.AbstractReduce):
             return RkhsVec(
-                self.insp_pts, self.kernel, other @ self.reduce, self.transpose
+                self.insp_pts, self.k, other @ self.reduce, self.transpose
             )
         else:
             return self.__matmul__(other)
+
+
+@dataclass
+class CombinationVec(RkhsVec):
+    rkhs_vecs: List[RkhsVec]
+    operator: Callable = static_field(None)
+    reduce: red.Reduce = param_field(red.Identity())
+
+    def __post_init__(self):
+        self.__len = self.reduce.new_len(len(self.rkhs_vecs[0]), self.reduce)]))
+    
+    @property
+    def insp_pts(self):
+        return jnp.concatenate([rkhs_vec.insp_pts for rkhs_vec in self.rkhs_vecs])
+
+    @property
+    def size(self):
+        return self.__len
