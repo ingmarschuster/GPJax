@@ -1,13 +1,16 @@
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from typing import Any
 from jaxtyping import Float, Array, Int
 from beartype.typing import Union, Callable, List, TypeVar, Tuple
 import jax.numpy as np
 from gpjax.typing import ScalarInt, ScalarFloat, ScalarBool
 
-ReduceOrArray = TypeVar("ReduceOrArray", "AbstractReduce", Float[Array, "N M"])
+ReduceOrArray = TypeVar("ReduceOrArray", "AbstractReduce", Float[Array, "N ..."])
 
-NumberOrArray = TypeVar("NumberOrArray", Float[Array, "N M"], ScalarInt, ScalarFloat)
+NumberOrArray = TypeVar(
+    "NumberOrArray", Int[Array, "N ..."], Float[Array, "N ..."], ScalarInt, ScalarFloat
+)
 
 
 def tile_view(inp: np.ndarray, reps: int) -> np.ndarray:
@@ -79,10 +82,13 @@ class ChainedReduce(AbstractReduce):
 
         self.reductions = reductions_list
 
-    def __execute_chain(
-        self, func: Callable, start_val: NumberOrArray
-    ) -> NumberOrArray:
+    # FIXME: The return type of this function needs to be specified, but currently I don't know how to and not get BearType errors.
+    def __execute_chain(self, func: Callable, start_val: NumberOrArray) -> Any:
         carry = start_val
+        # We assume that reductions are applied in reverse order.
+        # E.g. reduce1 @ reduce2 @ reduce3 @ gram results in the list
+        #  self.reductions = [reduce1, reduce2, reduce3]
+        # so to reflect the correct math, we need to apply the reductions in reverse order.
         for gr in self.reductions[::-1]:
             carry = func(gr, carry)
         return carry
@@ -98,7 +104,7 @@ class ChainedReduce(AbstractReduce):
         """
         return self.__execute_chain(lambda x, carry: x.new_len(carry), original_len)
 
-    def __matmul__(self, other: ReduceOrArray) -> ReduceOrArray:
+    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
         """Apply a list of reductions to an array.
 
         Args:
@@ -107,12 +113,12 @@ class ChainedReduce(AbstractReduce):
         Returns:
             Array: Reduced array.
         """
-        if isinstance(other, AbstractReduce):
-            return ChainedReduce([self, other])
+        if isinstance(inp, AbstractReduce):
+            return ChainedReduce([self, inp])
         if self.reductions is None or len(self.reductions) == 0:
-            return other
+            return inp
         else:
-            return self.__execute_chain(lambda x, carry: x.__matmul__(carry), other)
+            return self.__execute_chain(lambda x, carry: x.__matmul__(carry), inp)
 
 
 @dataclass
@@ -305,12 +311,12 @@ class Prefactors(AbstractReduce):
         """
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
-        if self.prefactors.shape[0] != inp.shape[axis]:
+        if self.prefactors.shape[0] != inp.shape[0]:
             raise ValueError(
-                f"Prefactors shape {self.prefactors.shape} does not match input shape {inp.shape} along axis {axis}"
+                f"Prefactors shape {self.prefactors.shape} does not match input shape {inp.shape} along axis 0"
             )
         return inp.astype(self.prefactors.dtype) * np.expand_dims(
-            self.prefactors, axis=(axis + 1) % 2
+            self.prefactors, axis=(0 + 1) % 2
         )
 
     def new_len(self, original_len: int) -> int:
@@ -363,17 +369,18 @@ class Scale(AbstractReduce):
 
 @dataclass
 class Repeat(AbstractReduce):
-    """Repeat the input array."""
+    """This reduction will repeat the input array `times` times.
 
-    times: int
+    Args:
+        times (int): Number of times to repeat the input array.
+    """
 
-    def __post_init__(self, times: int):
-        """This reduction will repeat the input array `times` times.
+    times: ScalarInt
 
-        Args:
-            times (int): Number of times to repeat the input array.
-        """
-        if times <= 1:
+    def __post_init__(
+        self,
+    ):
+        if self.times <= 1:
             raise ValueError("Repeat times must be greater than 1")
 
     def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
@@ -387,7 +394,7 @@ class Repeat(AbstractReduce):
         """
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
-        return np.repeat(inp, 0)
+        return np.repeat(inp, self.times, 0)
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -443,7 +450,9 @@ class TileView(LinearizableReduce):
             raise ValueError(
                 "Input can't be broadcasted to target length %d" % self.result_len
             )
-        return tile_view(inp, self.result_len // inp.shape[0])
+        repeats = self.result_len // inp.shape[0]
+        print("Tiling %d times" % repeats)
+        return tile_view(inp, repeats)
 
     def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
         """Linear map version of reduce_first_ax for the tile view reduction.
