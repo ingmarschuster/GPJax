@@ -2,15 +2,15 @@
 from .base import (
     AbstractReduce,
     ChainedReduce,
-    LinearizableReduce,
     LinearReduce,
-    NoReduce,
-    Prefactors,
-    Scale,
-    Repeat,
-    TileView,
-    Sum,
-    Mean,
+    LinearizableReduce,
 )
 
-from .sparsered import SparseReduce
+from .simple import NoReduce, Prefactors, Scale, Sum, Mean, BalancedRed, Center
+
+
+from .repetitions import (
+    SparseReduce,
+    Repeat,
+    TileView,
+)

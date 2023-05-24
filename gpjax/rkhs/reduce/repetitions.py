@@ -23,11 +23,144 @@ from gpjax.typing import (
 from .base import (
     AbstractReduce,
     LinearizableReduce,
+    LinearReduce,
+    ChainedReduce,
+    ReduceOrArray,
+    NumberOrArray,
 )
 
-ReduceOrArray = TypeVar("ReduceOrArray", "AbstractReduce", Float[Array, "N M"])
 
-NumberOrArray = TypeVar("NumberOrArray", Float[Array, "N M"], ScalarInt, ScalarFloat)
+def tile_view(inp: np.ndarray, reps: int) -> np.ndarray:
+    """Tile a view of an array
+
+    Args:
+        inp (np.ndarray): Array to tile
+        reps (int): Repetitions of the array
+
+    Returns:
+        np.ndarray: Tile view of the array
+
+    Example:
+        >>> tile_view(np.array([[1, 2], [3, 4]]), 2)
+        DeviceArray([[1, 2],
+                     [3, 4],
+                     [1, 2],
+                     [3, 4]], dtype=int32)
+    """
+    return np.broadcast_to(inp.ravel(), (reps, inp.size)).reshape(
+        (reps * inp.shape[0], inp.shape[1])
+    )
+
+
+@dataclass
+class Repeat(AbstractReduce):
+    """This reduction will repeat the input array `times` times.
+
+    Args:
+        times (int): Number of times to repeat the input array.
+    """
+
+    times: ScalarInt
+
+    def __post_init__(
+        self,
+    ):
+        if self.times <= 1:
+            raise ValueError("Repeat times must be greater than 1")
+
+    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+        """Repeat the input array.
+
+        Args:
+            inp (Array): Input array, typically a gram matrix.
+
+        Returns:
+            Array: Repeated input array.
+        """
+        if isinstance(inp, AbstractReduce):
+            return ChainedReduce([self, inp])
+        return np.repeat(inp, self.times, 0)
+
+    def new_len(self, original_len: int) -> int:
+        """Compute the new length of the array after reduction.
+
+        Args:
+            original_len (int): Original length of the array.
+
+        Returns:
+            int: Length of the array after reduction.
+        """
+        return original_len * self.times
+
+
+@dataclass
+class TileView(LinearizableReduce):
+    """Tile the input array. This reduction provides a view on the input array, avoiding data copy."""
+
+    result_len: int
+
+    def __post_init__(self):
+        """This reduction will tile the input array `result_len` times."""
+        if self.result_len < 2:
+            raise ValueError("TileView result_len must be greater than 1")
+
+    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+        """Reduce the first axis of the input array by tiling it.
+
+        Args:
+            inp (ReduceOrArray): Input array, typically a gram matrix.
+
+        Returns:
+            ReduceOrArray: Reduced array.
+
+        Example:
+            >>> from jax import numpy as jnp
+            >>> from jaxrk.reduce import TileView
+            >>> t = TileView(6)
+            >>> m = jnp.array([[1,2,3],[4,5,6]])
+            >>> t(m)
+            DeviceArray([[1, 2, 3],
+                        [4, 5, 6],
+                        [1, 2, 3],
+                        [4, 5, 6],
+                        [1, 2, 3],
+                        [4, 5, 6]], dtype=int32)
+            >>> t(m, axis=1)
+            DeviceArray([[1, 2, 3, 1, 2, 3],
+                        [4, 5, 6, 4, 5, 6]], dtype=int32)
+        """
+        if isinstance(inp, AbstractReduce):
+            return ChainedReduce([self, inp])
+        if self.result_len % inp.shape[0] != 0:
+            raise ValueError(
+                "Input can't be broadcasted to target length %d" % self.result_len
+            )
+        repeats = self.result_len // inp.shape[0]
+        print("Tiling %d times" % repeats)
+        return tile_view(inp, repeats)
+
+    def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
+        """Linear map version of reduce_first_ax for the tile view reduction.
+
+        Args:
+            inp_shape (tuple): Shape of the input matrix.
+            axis (int, optional): Axis to apply reduction over. Defaults to 0.
+
+        Returns:
+            Array: A linear operator that can be applied to the input matrix and get a tiled result.
+        """
+        return tile_view(np.eye(inp_shape[axis]), self.result_len // inp_shape[axis])
+
+    def new_len(self, original_len: int) -> int:
+        """Compute the new length of the array after reduction.
+
+        Args:
+            original_len (int): Original length of the array.
+
+        Returns:
+            int: Length of the array after reduction.
+        """
+        return self.result_len
 
 
 @dataclass

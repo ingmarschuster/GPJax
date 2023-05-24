@@ -17,6 +17,8 @@ from gpjax.rkhs.reduce import (
     TileView,
     NoReduce,
     ChainedReduce,
+    BalancedRed,
+    Center,
 )
 
 rng = onp.random.RandomState(1)
@@ -110,3 +112,24 @@ def test_ChainedReduce():
     assert np.allclose(rgr, ogr)
     rgr = TileView(16) @ Repeat(2) @ gram
     assert np.allclose(rgr, ogr)
+
+
+def test_BalancedRed():
+    gram = np.array(rng.randn(4, 3))
+    red = BalancedRed(2)
+    expected_result = np.array([gram[:2].sum(0), gram[2:].sum(0)])
+    for r in red, red.linearize(gram.shape, 0):
+        assert np.allclose(r @ gram, expected_result)
+
+    red = BalancedRed(2, True)
+    expected_result = np.array([gram[:2].sum(0) / 2, gram[2:].sum(0) / 2])
+    for r in red, red.linearize(gram.shape, 0):
+        assert np.allclose(r @ gram, expected_result)
+
+
+def test_Center():
+    gram = np.array(rng.randn(4, 3))
+    red = Center()
+    expected_result = gram - gram.mean(0)
+    for r in red, red.linearize(gram.shape, 0):
+        assert np.allclose(r @ gram, expected_result)
