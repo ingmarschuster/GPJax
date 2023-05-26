@@ -19,6 +19,7 @@ from gpjax.rkhs.reduce import (
     ChainedReduce,
     BalancedRed,
     Center,
+    Kmer,
 )
 
 rng = onp.random.RandomState(1)
@@ -132,4 +133,28 @@ def test_Center():
     red = Center()
     expected_result = gram - gram.mean(0)
     for r in red, red.linearize(gram.shape, 0):
+        assert np.allclose(r @ gram, expected_result)
+
+
+def test_Kmer():
+    gram = np.array(rng.randn(4, 3))
+    expected_result = np.array(
+        [gram[i : i + 2].sum(0, keepdims=True) for i in range(3)]
+    ).squeeze()
+    for r in (
+        Kmer(2, 4, False, "linear"),
+        Kmer(2, 4, False, "sparse"),
+        Kmer(2, 4, False, "binary"),
+    ):
+        assert np.allclose(r @ gram, expected_result)
+
+    idx_res = np.array([gram[i].sum(0) for i in Kmer(2, 4, False, "index")])
+    assert np.allclose(idx_res, expected_result)
+
+    expected_result = expected_result / 2
+    for r in (
+        Kmer(2, 4, True, "linear"),
+        Kmer(2, 4, True, "sparse"),
+        Kmer(2, 4, True, "binary"),
+    ):
         assert np.allclose(r @ gram, expected_result)
