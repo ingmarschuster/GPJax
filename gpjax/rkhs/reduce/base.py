@@ -12,10 +12,6 @@ NumberOrArray = TypeVar(
     "NumberOrArray", Int[Array, "N ..."], Float[Array, "N ..."], ScalarInt, ScalarFloat
 )
 
-ReduceOrArray = TypeVar("ReduceOrArray", "AbstractReduce", Float[Array, "N M"])
-
-NumberOrArray = TypeVar("NumberOrArray", Float[Array, "N M"], ScalarInt, ScalarFloat)
-
 
 class AbstractReduce(ABC):
     """The abstract base class for reductions."""
