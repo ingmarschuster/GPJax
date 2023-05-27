@@ -1,6 +1,5 @@
 # import all reduce classes from .base
 from .base import (
-    AbstractReduce,
     ChainedReduce,
     LinearReduce,
     LinearizableReduce,

@@ -9,6 +9,7 @@ from beartype.typing import (
     TypeVar,
     Union,
 )
+from jax import jit
 import jax.numpy as np
 
 import jax.scipy as sp
@@ -21,13 +22,12 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
+from ..typing import ReduceableOrArray, NumberOrArray, AbstractReduce
+
 from .base import (
-    AbstractReduce,
     LinearizableReduce,
     LinearReduce,
     ChainedReduce,
-    ReduceOrArray,
-    NumberOrArray,
 )
 
 
@@ -69,7 +69,7 @@ class Repeat(AbstractReduce):
         if self.times <= 1:
             raise ValueError("Repeat times must be greater than 1")
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __matmul__(self, inp: ReduceableOrArray) -> ReduceableOrArray:
         """Repeat the input array.
 
         Args:
@@ -105,7 +105,7 @@ class TileView(LinearizableReduce):
         if self.result_len < 2:
             raise ValueError("TileView result_len must be greater than 1")
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __matmul__(self, inp: ReduceableOrArray) -> ReduceableOrArray:
         """Reduce the first axis of the input array by tiling it.
 
         Args:
@@ -423,20 +423,20 @@ def Kmer(
         raise ValueError(
             f"seq_length ({seq_length}) must be greater than k ({k}) and both must be greater than 1."
         )
-
-    if output_format == "linear" or output_format == "binary":
-        A = np.zeros((seq_length - k + 1, seq_length), dtype=np.float32)
-        for i in range(seq_length - k + 1):
-            A = A.at[i, i : i + k].set(1.0)
-        if average:
-            A = A / k
-        if output_format == "binary":
-            return A
-        else:
-            return LinearReduce(A)
-    elif output_format == "sparse" or output_format == "index":
-        index = np.arange(seq_length - k + 1)[:, None] + np.arange(k)[None, :]
-        if output_format == "index":
-            return index
-        else:
-            return SparseReduce([index], average)
+    num_kmers = seq_length - k + 1
+    idx = np.arange(num_kmers)[:, None] + np.arange(k)[None, :]
+    if output_format == "index":
+        return idx
+    elif output_format == "sparse":
+        return SparseReduce([idx], average)
+    A = np.zeros((num_kmers, seq_length), dtype=np.float32)
+    A = A.at[np.arange(num_kmers)[:, None], idx].set(1)
+    if average:
+        A = A / k
+    if output_format == "binary":
+        return A
+    elif output_format == "linear":
+        return LinearReduce(A)
+    raise ValueError(
+        f"output_format must be either 'linear', 'sparse', 'binary', or 'index', but got {output_format}."
+    )

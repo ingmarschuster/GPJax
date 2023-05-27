@@ -6,39 +6,8 @@ from beartype.typing import Union, Callable, List, TypeVar, Tuple
 import jax.numpy as np
 from gpjax.typing import ScalarInt, ScalarFloat, ScalarBool
 
-ReduceOrArray = TypeVar("ReduceOrArray", "AbstractReduce", Float[Array, "N ..."])
 
-NumberOrArray = TypeVar(
-    "NumberOrArray", Int[Array, "N ..."], Float[Array, "N ..."], ScalarInt, ScalarFloat
-)
-
-
-class AbstractReduce(ABC):
-    """The abstract base class for reductions."""
-
-    @abstractmethod
-    def __matmul__(self, inp: Array) -> Array:
-        """Reduce the first axis of the input matrix.
-
-        Args:
-            inp (Array): The array to reduce. Typically a gram matrix.
-
-        Returns:
-            Array: The array reduced along the first axis.
-        """
-        pass
-
-    @abstractmethod
-    def new_len(self, original_len: int) -> int:
-        """Compute the new length of the array after reduction.
-
-        Args:
-            original_len (int): Original length of the array.
-
-        Returns:
-            int: Length of the array after reduction.
-        """
-        pass
+from ..typing import ReduceableOrArray, NumberOrArray, AbstractReduce
 
 
 @dataclass
@@ -46,7 +15,7 @@ class ChainedReduce(AbstractReduce):
     reductions: List[AbstractReduce] = None
 
     def __post_init__(self):
-        # Add kernels to a list, flattening out instances of this class therein, as in GPFlow kernels.
+        # Add to a list, flattening out instances of this class therein, as in GPFlow kernels.
         reductions_list: List[AbstractReduce] = []
 
         for r in self.reductions:
@@ -82,7 +51,7 @@ class ChainedReduce(AbstractReduce):
         """
         return self.__execute_chain(lambda x, carry: x.new_len(carry), original_len)
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Apply a list of reductions to an array.
 
         Args:
@@ -91,12 +60,25 @@ class ChainedReduce(AbstractReduce):
         Returns:
             Array: Reduced array.
         """
-        if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp])
         if self.reductions is None or len(self.reductions) == 0:
             return inp
         else:
             return self.__execute_chain(lambda x, carry: x.__matmul__(carry), inp)
+
+    def __reduce_self__(self, other: AbstractReduce) -> "ChainedReduce":
+        """Combine two reductions into a single chained reduction.
+
+        Args:
+            other (AbstractReduce): The reduction to combine with.
+
+        Returns:
+            ChainedReduce: The combined reduction.
+        """
+        if isinstance(other, self.__class__):
+            # makes sure that the reductions are flattened out
+            return ChainedReduce(other.reductions + self.reductions)
+        else:
+            return ChainedReduce([other] + self.reductions)
 
 
 @dataclass
@@ -105,7 +87,7 @@ class LinearReduce(AbstractReduce):
 
     linear_map: Float[Array, "N M"]
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Reduce the first axis of the input matrix.
 
         Args:
@@ -114,8 +96,6 @@ class LinearReduce(AbstractReduce):
         Returns:
             Array: The array reduced along the first axis.
         """
-        if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp])
         if len(inp.shape) != 2:
             raise ValueError(
                 "LinearReduce expects a 2D array, got %dD" % len(inp.shape)

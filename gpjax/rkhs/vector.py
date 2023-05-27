@@ -19,31 +19,28 @@ from gpjax.base import (
     static_field,
 )
 
-import reduce as red
+from copy import copy
+
+from . import reduce as red
 from .. import kernels
+
+from .typing import AbstractRkhsVec, AbstractReduce
 
 
 @dataclass
-class RkhsVec(Module):
-    insp_pts: Union["RkhsVec", Float[Array, "N M ..."]]
+class RkhsVec(AbstractRkhsVec):
+    insp_pts: Union["RkhsVec", Float[Array, "N M ..."]] = param_field(jnp.ones((1, 1)))
     k: kernels.AbstractKernel = param_field(kernels.RBF())
-    reduce: red.Reduce = param_field(red.Identity())
-    transpose: bool = False
+
+    def __post_init__(self):
+        self.reduce: AbstractReduce = red.NoReduce()
+        self.transpose: bool = False
 
     @property
     def T(self):
-        return RkhsVec(
-            self.insp_pts,
-            self.k,
-            self.reduce,
-            transpose=not self.transpose,
-        )
-
-    # Todo: __getitem__ methods, including slicing, indexing, and boolean indexing.
-
-    @property
-    def is_colvec(self) -> bool:
-        return not self.transpose
+        rval = self.reduce @ RkhsVec(self.insp_pts, self.k)
+        rval.transpose = not self.transpose
+        return rval
 
     @property
     def is_rowvec(self) -> bool:
@@ -57,16 +54,14 @@ class RkhsVec(Module):
 
     @property
     def size(self):
-        return self.reduce.final_len(len(self.insp_pts))
+        return self.reduce.new_len(len(self.insp_pts))
 
-    def __len__(self):
-        if self.transpose:
-            return 1
-        else:
-            return self.size
+    def outer_inner(self, other: "RkhsVec") -> Float[Array, "N M"]:
+        r"""Compute the matrix resulting from taking the RKHS inner product of each element in self with each element in other.
+        The result will be a matrix with element <self[i], other[j]> at position (i, j).
+        This is exactly the gram matrix if no reduction is applied.
 
-    def __pairwise_dot__(self, other: "RkhsVec") -> Float[Array, "N M"]:
-        """Compute the dot product between all pairs of elements from two RKHS vectors.
+        In other words, elements to pair are selected using an outer product like mechanism (pair each element in self with each element in other), while taking the RKHS inner product to combine paired elements.
 
         Args:
             other (RkhsVec): The other RKHS vector. Assumed to have the same kernel.
@@ -84,76 +79,90 @@ class RkhsVec(Module):
         raw_gram = self.k.cross_covariance(self.insp_pts, other.insp_pts)
         return self.reduce @ (other.reduce @ raw_gram.T).T
 
-    def __tensor_prod__(self, other: "RkhsVec") -> "RkhsVec":
-        if self.size != other.size:
-            raise ValueError(
-                f"Trying to compute tensor product between RKHS vectors of different sizes ({self.size} and {other.size})"
-            )
-        return ProductVec([self, other], red.Sum())
-
-    def sum(
-        self,
-    ) -> "RkhsVec":
-        return red.Sum() @ self
-
-    def mean(
-        self,
-    ) -> "RkhsVec":
-        return red.Mean() @ self
-
-    def __matmul__(self, other: "RkhsVec") -> Union[Float[Array, "M N"], "RkhsVec"]:
-        if self.is_rowvec == other.is_rowvec:
-            raise ValueError(
-                f"Trying to compute matrix product between two row vectors or two column vectors"
-            )
-        if self.is_rowvec and other.is_colvec:
-            # this returns a matrix with the RKHS inner products between all pairs of elements of self and other
-            return self.__pairwise_dot__(other)
-        elif self.is_colvec and other.is_rowvec:
-            # this returns a RKHS vector with the tensor product between all pairs of elements of self and other
-            return self.__tensor_prod__(other)
-        else:
-            raise ValueError(
-                f"Trying to compute matrix product between two RKHS vectors of the same ({self.shape}). This is not supported."
-            )
-
-    def __rmatmul__(
-        self, other: Union[red.AbstractReduce, "RkhsVec"]
-    ) -> Union[Float[Array, "M N"], "RkhsVec"]:
-        if isinstance(other, red.AbstractReduce):
-            return RkhsVec(self.insp_pts, self.k, other @ self.reduce, self.transpose)
-        else:
-            return self.__matmul__(other)
-
-    def __add__(self, other: "RkhsVec") -> "RkhsVec":
-        return SumVec([self, other])
-
-    def __mul__(self, other: "RkhsVec") -> "RkhsVec":
-        return ProductVec([self, other])
+    def __apply_reduce__(self, reduce: AbstractReduce) -> "RkhsVec":
+        return RkhsVec(reduce @ copy(self.reduce), self.insp_pts, self.k)
 
 
 @dataclass
-class CombinationVec(RkhsVec):
-    rkhs_vecs: List[RkhsVec]
+class CombinationVec(AbstractRkhsVec):
+    rkhs_vecs: List[RkhsVec] = param_field([])
     operator: Callable = static_field(None)
-    reduce: red.Reduce = param_field(red.NoReduce())
 
     def __post_init__(self):
-        orig_len = len(self.rkhs_vecs[0])
+        super().__post_init__()
+        orig_size = self.rkhs_vecs[0].size
         for rkhs_vec in self.rkhs_vecs:
-            if len(rkhs_vec) != orig_len:
+            if len(rkhs_vec) != orig_size:
                 raise ValueError(
-                    f"Trying to combine RKHS vectors of different sizes ({orig_len} and {len(rkhs_vec)})"
+                    f"Trying to combine RKHS vectors of different sizes ({orig_size} and {len(rkhs_vec)})"
                 )
-        self.__len = self.reduce.new_len(orig_len)
+        self.__size = self.reduce.new_len(orig_size)
+        self.reduce: AbstractReduce = red.NoReduce()
+        self.transpose: bool = False
 
     @property
-    def insp_pts(self):
-        return jnp.concatenate([rkhs_vec.insp_pts for rkhs_vec in self.rkhs_vecs])
+    def T(self):
+        rval = CombinationVec(self.rkhs_vecs, self.operator)
+        rval.reduce = self.reduce
+        rval.transpose = not self.transpose
+        return rval
+
+    @property
+    def is_rowvec(self) -> bool:
+        return self.transpose
+
+    @property
+    def shape(self):
+        if self.transpose:
+            return (1, self.size)
+        return (self.size, 1)
 
     @property
     def size(self):
-        return self.__len
+        return self.__size
+
+    def outer_inner(self, other: "CombinationVec") -> Float[Array, "N M"]:
+        r"""Compute the matrix resulting from taking the RKHS inner product of each element in self with each element in other.
+        The result will be a matrix with element <self[i], other[j]> at position (i, j).
+        This is exactly the gram matrix if no reduction is applied.
+
+        In other words, elements to pair are selected using an outer product like mechanism (pair each element in self with each element in other), while taking the RKHS inner product to combine paired elements.
+
+        Args:
+            other (CombinationVec): The other RKHS vector. Assumed to have the same kernel.
+
+        Raises:
+            TypeError: If the kernels of the two RKHS vectors do not match.
+
+        Returns:
+            Float[Array]: A matrix of shape (self.size, other.size) containing the dot products.
+        """
+        if self.k != other.k:
+            raise TypeError(
+                f"Trying to compute inner products between elements of different RKHSs (Kernel types do not match)"
+            )
+        # compute the gram matrix for all pairs of elements in self and other
+        raw_grams = jnp.array(
+            [
+                self.rkhs_vecs[i].outer_inner(other.rkhs_vecs[i])
+                for i in range(len(self.rkhs_vecs))
+            ]
+        )
+
+        # combine the gram matrices
+        combined_raw_gram = self.operator(
+            raw_grams,
+            axis=0,
+        )
+
+        # reduce the combined gram matrix
+        return self.reduce @ (other.reduce @ combined_raw_gram.T).T
+
+    def __apply_reduce__(self, reduce: AbstractReduce) -> "RkhsVec":
+        rval = CombinationVec(self.rkhs_vecs, self.operator)
+        rval = reduce @ copy(self.reduce) @ rval
+        rval.transpose = self.transpose
+        return rval
 
 
 SumVec = partial(CombinationVec, operator=jnp.add)

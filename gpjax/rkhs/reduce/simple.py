@@ -21,41 +21,18 @@ from gpjax.typing import (
 )
 
 from .base import (
-    AbstractReduce,
     LinearizableReduce,
     LinearReduce,
     ChainedReduce,
-    ReduceOrArray,
-    NumberOrArray,
 )
 
-
-class NoReduce(AbstractReduce):
-    """No reduction is actually applied."""
-
-    def __matmul__(self, inp: Union[AbstractReduce, Array]):
-        """Return the input array.
-
-        Args:
-            inp (Array): Input array, typically a gram matrix.
-
-        Returns:
-            Array: `inp`
-        """
-        if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp])
-        return inp
-
-    def new_len(self, original_len: int) -> int:
-        """Return the original length.
-
-        Args:
-            original_len (int): Original length of the array.
-
-        Returns:
-            int: `original_len`
-        """
-        return original_len
+from ..typing import (
+    ReduceableOrArray,
+    NumberOrArray,
+    AbstractReduce,
+    AbstractReduceable,
+    NoReduce,
+)
 
 
 @dataclass
@@ -64,7 +41,7 @@ class Prefactors(AbstractReduce):
 
     prefactors: Float[Array, "N"]
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Multiply the input array with the prefactors.
 
         Args:
@@ -87,8 +64,6 @@ class Prefactors(AbstractReduce):
                          [4, 10, 18],
                          [7, 16, 27]], dtype=int32)
         """
-        if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp])
         if self.prefactors.shape[0] != inp.shape[0]:
             raise ValueError(
                 f"Prefactors shape {self.prefactors.shape} does not match input shape {inp.shape} along axis 0"
@@ -96,6 +71,17 @@ class Prefactors(AbstractReduce):
         return inp.astype(self.prefactors.dtype) * np.expand_dims(
             self.prefactors, axis=(0 + 1) % 2
         )
+
+    def __apply_reduce__(self, inp: AbstractReduce) -> "ChainReduce":
+        """Chain the prefactors with another reduction.
+
+        Args:
+            inp (AbstractReduce): Input reduction.
+
+        Returns:
+            ChainReduce: Chained reduction.
+        """
+        return ChainedReduce([self, inp])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -119,7 +105,7 @@ class Scale(AbstractReduce):
 
     s: ScalarFloat
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Scale the input array.
 
         Args:
@@ -129,9 +115,18 @@ class Scale(AbstractReduce):
         Returns:
             ReduceOrArray: Scaled input array.
         """
-        if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp])
         return inp * self.s
+
+    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
+        """Chain the scaling with another reduction.
+
+        Args:
+            inp (AbstractReduce): Input reduction.
+
+        Returns:
+            ChainReduce: Chained reduction.
+        """
+        return ChainedReduce([self, inp])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -148,7 +143,7 @@ class Scale(AbstractReduce):
 class Sum(LinearizableReduce):
     """Sum the input array."""
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Sum the input array.
 
         Args:
@@ -169,9 +164,18 @@ class Sum(LinearizableReduce):
                          [15],
                          [24]], dtype=int32)
         """
-        if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp])
         return inp.sum(axis=0, keepdims=True)
+
+    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
+        """Chain the sum with another reduction.
+
+        Args:
+            inp (AbstractReduce): Input reduction.
+
+        Returns:
+            ChainReduce: Chained reduction.
+        """
+        return ChainedReduce([self, inp])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -200,7 +204,7 @@ class Sum(LinearizableReduce):
 class Mean(LinearizableReduce):
     """Average the input array."""
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Average the input array.
 
         Args:
@@ -212,6 +216,17 @@ class Mean(LinearizableReduce):
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
         return np.mean(inp, axis=0, keepdims=True)
+
+    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
+        """Chain the mean with another reduction.
+
+        Args:
+            inp (AbstractReduce): Input reduction.
+
+        Returns:
+            ChainReduce: Chained reduction.
+        """
+        return ChainedReduce([self, inp])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -260,7 +275,7 @@ class BalancedRed(LinearizableReduce):
             self.red = np.sum
             self.factor = 1.0
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Sums up a fixed number of consecutive elements in the input array (and potentially divide by the number of elements).
 
         Args:
@@ -280,12 +295,21 @@ class BalancedRed(LinearizableReduce):
             DeviceArray([[ 3,  7],
                          [11, 15]], dtype=int32)
         """
-        if isinstance(inp, AbstractReduce):
-            return ChainedReduce([self, inp])
         rval = self.red(
             np.reshape(inp, (-1, self.points_per_split, inp.shape[-1])), axis=1
         )
         return rval
+
+    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
+        """Chain the balanced reduction with another reduction.
+
+        Args:
+            inp (AbstractReduce): Input reduction.
+
+        Returns:
+            ChainReduce: Chained reduction.
+        """
+        return ChainedReduce([self, inp])
 
     def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
         """Linear map version of `BalancedRed` reduction.
@@ -321,7 +345,7 @@ class BalancedRed(LinearizableReduce):
 class Center(LinearizableReduce):
     """Center the input array by subtracting the mean."""
 
-    def __matmul__(self, inp: ReduceOrArray) -> ReduceOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Center input along axis.
 
         Args:
@@ -333,6 +357,17 @@ class Center(LinearizableReduce):
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
         return inp - np.mean(inp, 0, keepdims=True)
+
+    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
+        """Chain the center reduction with another reduction.
+
+        Args:
+            inp (AbstractReduce): Input reduction.
+
+        Returns:
+            ChainReduce: Chained reduction.
+        """
+        return ChainedReduce([self, inp])
 
     def linmap(self, gram_shape: tuple, axis: int = 0) -> Array:
         """Linear map version of `Center` reduction.
