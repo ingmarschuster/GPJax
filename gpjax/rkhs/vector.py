@@ -24,16 +24,15 @@ from copy import copy
 from . import reduce as red
 from .. import kernels
 
-from .typing import AbstractRkhsVec, AbstractReduce
+from .base import AbstractRkhsVec, AbstractReduce
 
 
 @dataclass
 class RkhsVec(AbstractRkhsVec):
-    insp_pts: Union["RkhsVec", Float[Array, "N M ..."]] = param_field(jnp.ones((1, 1)))
     k: kernels.AbstractKernel = param_field(kernels.RBF())
+    insp_pts: Union["RkhsVec", Float[Array, "N M ..."]] = param_field(jnp.ones((1, 1)))
 
     def __post_init__(self):
-        self.reduce: AbstractReduce = red.NoReduce()
         self.transpose: bool = False
 
     @property
@@ -80,7 +79,9 @@ class RkhsVec(AbstractRkhsVec):
         return self.reduce @ (other.reduce @ raw_gram.T).T
 
     def __apply_reduce__(self, reduce: AbstractReduce) -> "RkhsVec":
-        return RkhsVec(reduce @ copy(self.reduce), self.insp_pts, self.k)
+        return RkhsVec(
+            reduce=reduce @ copy(self.reduce), k=self.k, insp_pts=self.insp_pts
+        )
 
 
 @dataclass
@@ -97,7 +98,6 @@ class CombinationVec(AbstractRkhsVec):
                     f"Trying to combine RKHS vectors of different sizes ({orig_size} and {len(rkhs_vec)})"
                 )
         self.__size = self.reduce.new_len(orig_size)
-        self.reduce: AbstractReduce = red.NoReduce()
         self.transpose: bool = False
 
     @property
@@ -159,10 +159,11 @@ class CombinationVec(AbstractRkhsVec):
         return self.reduce @ (other.reduce @ combined_raw_gram.T).T
 
     def __apply_reduce__(self, reduce: AbstractReduce) -> "RkhsVec":
-        rval = CombinationVec(self.rkhs_vecs, self.operator)
-        rval = reduce @ copy(self.reduce) @ rval
-        rval.transpose = self.transpose
-        return rval
+        return CombinationVec(
+            reduce=reduce @ copy(self.reduce),
+            rkhs_vecs=self.rkhs_vecs,
+            operator=self.operator,
+        )
 
 
 SumVec = partial(CombinationVec, operator=jnp.add)

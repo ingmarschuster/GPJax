@@ -26,7 +26,7 @@ from .base import (
     ChainedReduce,
 )
 
-from ..typing import (
+from ..base import (
     ReduceableOrArray,
     NumberOrArray,
     AbstractReduce,

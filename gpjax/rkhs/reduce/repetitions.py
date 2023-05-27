@@ -22,7 +22,7 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-from ..typing import ReduceableOrArray, NumberOrArray, AbstractReduce
+from ..base import ReduceableOrArray, NumberOrArray, AbstractReduce
 
 from .base import LinearizableReduce, LinearReduce, NoReduce, ChainedReduce
 

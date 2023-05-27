@@ -7,7 +7,7 @@ import jax.numpy as np
 from gpjax.typing import ScalarInt, ScalarFloat, ScalarBool
 
 
-from ..typing import (
+from ..base import (
     ReduceableOrArray,
     NumberOrArray,
     AbstractReduce,

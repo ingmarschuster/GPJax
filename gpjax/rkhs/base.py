@@ -169,6 +169,9 @@ class ChainedReduce(AbstractReduce):
         else:
             self.chain = reductions_list
 
+    def __getitem__(self, idx: int) -> AbstractReduce:
+        return self.chain[idx]
+
     # FIXME: The return type of this function needs to be specified, but currently I don't know how to and not get BearType errors.
     def __execute_chain(self, func: Callable, start_val: NumberOrArray) -> Any:
         carry = start_val
@@ -227,7 +230,7 @@ class ChainedReduce(AbstractReduce):
 class AbstractRkhsVec(AbstractReduceable):
     """The abstract base class for RKHS vectors."""
 
-    reduce: AbstractReduce = param_field(NoReduce())
+    reduce: ChainedReduce = param_field(ChainedReduce([NoReduce()]))
 
     @property
     def is_colvec(self) -> bool:
