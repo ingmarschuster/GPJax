@@ -147,6 +147,83 @@ class NoReduce(AbstractReduce):
 
 
 @dataclass
+class ChainedReduce(AbstractReduce):
+    chain: List[AbstractReduce] = param_field([NoReduce()])
+
+    def __post_init__(self):
+        # Add to a list, flattening out instances of this class therein
+        # FIXME: Maybe unnecessary given the implementation of __apply_reduce__?
+        reductions_list: List[AbstractReduce] = []
+
+        for r in self.chain:
+            if not isinstance(r, AbstractReduce):
+                raise TypeError("Can only combine Reduce instances")
+            if isinstance(r, NoReduce):
+                continue
+            if isinstance(r, self.__class__):
+                reductions_list.extend(r.chain)
+            else:
+                reductions_list.append(r)
+        if len(reductions_list) == 0:
+            self.chain = [NoReduce()]
+        else:
+            self.chain = reductions_list
+
+    # FIXME: The return type of this function needs to be specified, but currently I don't know how to and not get BearType errors.
+    def __execute_chain(self, func: Callable, start_val: NumberOrArray) -> Any:
+        carry = start_val
+        # We assume that reductions are applied in reverse order.
+        # E.g. reduce1 @ reduce2 @ reduce3 @ gram results in the list
+        #  self.reductions = [reduce1, reduce2, reduce3]
+        # so to reflect the correct math, we need to apply the reductions in reverse order.
+        for gr in self.chain[::-1]:
+            carry = func(gr, carry)
+        return carry
+
+    def new_len(self, original_len: int) -> int:
+        """Return the final length of an array after applying a chain of reductions.
+
+        Args:
+            original_len (int): Original length of the array.
+
+        Returns:
+            int: Final length of the array after applying the reductions.
+        """
+        return self.__execute_chain(lambda x, carry: x.new_len(carry), original_len)
+
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
+        """Apply a list of reductions to an array.
+
+        Args:
+            inp (Array): Input array, typically a gram matrix.
+
+        Returns:
+            Array: Reduced array.
+        """
+        if self.chain is None or len(self.chain) == 0:
+            return inp
+        else:
+            return self.__execute_chain(lambda x, carry: x.__matmul__(carry), inp)
+
+    def __apply_reduce__(self, other: AbstractReduce) -> "ChainedReduce":
+        """Apply the reduction `other` to the chain of reductions. Typically, `other` is prepended to the chain.
+
+        Args:
+            other (AbstractReduce): The reduction to combine with.
+
+        Returns:
+            ChainedReduce: The combined reduction.
+        """
+        if isinstance(other, NoReduce):
+            return self
+        elif isinstance(other, self.__class__):
+            # makes sure that the reductions are flattened out
+            return ChainedReduce(other.chain + self.chain)
+        else:
+            return ChainedReduce([other] + self.chain)
+
+
+@dataclass
 class AbstractRkhsVec(AbstractReduceable):
     """The abstract base class for RKHS vectors."""
 

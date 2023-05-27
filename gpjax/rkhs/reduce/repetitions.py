@@ -24,11 +24,7 @@ from gpjax.typing import (
 
 from ..typing import ReduceableOrArray, NumberOrArray, AbstractReduce
 
-from .base import (
-    LinearizableReduce,
-    LinearReduce,
-    ChainedReduce,
-)
+from .base import LinearizableReduce, LinearReduce, NoReduce, ChainedReduce
 
 
 def tile_view(inp: np.ndarray, reps: int) -> np.ndarray:
@@ -69,7 +65,7 @@ class Repeat(AbstractReduce):
         if self.times <= 1:
             raise ValueError("Repeat times must be greater than 1")
 
-    def __matmul__(self, inp: ReduceableOrArray) -> ReduceableOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N M"]) -> Float[Array, "K M"]:
         """Repeat the input array.
 
         Args:
@@ -81,6 +77,19 @@ class Repeat(AbstractReduce):
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
         return np.repeat(inp, self.times, 0)
+
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
+
+        Args:
+            reduce (AbstractReduce): The reduction to apply.
+
+        Returns:
+            Any: The result of applying the reduction.
+        """
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -105,7 +114,7 @@ class TileView(LinearizableReduce):
         if self.result_len < 2:
             raise ValueError("TileView result_len must be greater than 1")
 
-    def __matmul__(self, inp: ReduceableOrArray) -> ReduceableOrArray:
+    def __reduce_array__(self, inp: Float[Array, "N M"]) -> Float[Array, "K M"]:
         """Reduce the first axis of the input array by tiling it.
 
         Args:
@@ -139,6 +148,19 @@ class TileView(LinearizableReduce):
         repeats = self.result_len // inp.shape[0]
         print("Tiling %d times" % repeats)
         return tile_view(inp, repeats)
+
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
+
+        Args:
+            reduce (AbstractReduce): The reduction to apply.
+
+        Returns:
+            Any: The result of applying the reduction.
+        """
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
         """Linear map version of reduce_first_ax for the tile view reduction.
@@ -191,7 +213,7 @@ class SparseReduce(LinearizableReduce):
         else:
             self._reduce = np.sum
 
-    def __matmul__(self, inp: Float[Array, "N M"]) -> Float[Array, "K L"]:
+    def __reduce_array__(self, inp: Float[Array, "N M"]) -> Float[Array, "K L"]:
         """Reduce the first axis of the input.
 
         Args:
@@ -244,6 +266,19 @@ class SparseReduce(LinearizableReduce):
                 )
                 rval.append(reduced)
         return np.concatenate(rval, 0)
+
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
+
+        Args:
+            reduce (AbstractReduce): The reduction to apply.
+
+        Returns:
+            Any: The result of applying the reduction.
+        """
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def new_len(self, original_len: ScalarInt) -> ScalarInt:
         """Get the length of the reduced gram matrix.

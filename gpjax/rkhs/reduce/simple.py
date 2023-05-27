@@ -32,6 +32,7 @@ from ..typing import (
     AbstractReduce,
     AbstractReduceable,
     NoReduce,
+    ChainedReduce,
 )
 
 
@@ -72,16 +73,18 @@ class Prefactors(AbstractReduce):
             self.prefactors, axis=(0 + 1) % 2
         )
 
-    def __apply_reduce__(self, inp: AbstractReduce) -> "ChainReduce":
-        """Chain the prefactors with another reduction.
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
 
         Args:
-            inp (AbstractReduce): Input reduction.
+            reduce (AbstractReduce): The reduction to apply.
 
         Returns:
-            ChainReduce: Chained reduction.
+            Any: The result of applying the reduction.
         """
-        return ChainedReduce([self, inp])
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -105,7 +108,7 @@ class Scale(AbstractReduce):
 
     s: ScalarFloat
 
-    def __reduce_array(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
+    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Scale the input array.
 
         Args:
@@ -117,16 +120,18 @@ class Scale(AbstractReduce):
         """
         return inp * self.s
 
-    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
-        """Chain the scaling with another reduction.
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
 
         Args:
-            inp (AbstractReduce): Input reduction.
+            reduce (AbstractReduce): The reduction to apply.
 
         Returns:
-            ChainReduce: Chained reduction.
+            Any: The result of applying the reduction.
         """
-        return ChainedReduce([self, inp])
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -166,16 +171,18 @@ class Sum(LinearizableReduce):
         """
         return inp.sum(axis=0, keepdims=True)
 
-    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
-        """Chain the sum with another reduction.
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
 
         Args:
-            inp (AbstractReduce): Input reduction.
+            reduce (AbstractReduce): The reduction to apply.
 
         Returns:
-            ChainReduce: Chained reduction.
+            Any: The result of applying the reduction.
         """
-        return ChainedReduce([self, inp])
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -217,16 +224,18 @@ class Mean(LinearizableReduce):
             return ChainedReduce([self, inp])
         return np.mean(inp, axis=0, keepdims=True)
 
-    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
-        """Chain the mean with another reduction.
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
 
         Args:
-            inp (AbstractReduce): Input reduction.
+            reduce (AbstractReduce): The reduction to apply.
 
         Returns:
-            ChainReduce: Chained reduction.
+            Any: The result of applying the reduction.
         """
-        return ChainedReduce([self, inp])
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -300,16 +309,18 @@ class BalancedRed(LinearizableReduce):
         )
         return rval
 
-    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
-        """Chain the balanced reduction with another reduction.
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
 
         Args:
-            inp (AbstractReduce): Input reduction.
+            reduce (AbstractReduce): The reduction to apply.
 
         Returns:
-            ChainReduce: Chained reduction.
+            Any: The result of applying the reduction.
         """
-        return ChainedReduce([self, inp])
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
         """Linear map version of `BalancedRed` reduction.
@@ -358,16 +369,18 @@ class Center(LinearizableReduce):
             return ChainedReduce([self, inp])
         return inp - np.mean(inp, 0, keepdims=True)
 
-    def __reduce_self__(self, inp: AbstractReduce) -> "ChainReduce":
-        """Chain the center reduction with another reduction.
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
 
         Args:
-            inp (AbstractReduce): Input reduction.
+            reduce (AbstractReduce): The reduction to apply.
 
         Returns:
-            ChainReduce: Chained reduction.
+            Any: The result of applying the reduction.
         """
-        return ChainedReduce([self, inp])
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def linmap(self, gram_shape: tuple, axis: int = 0) -> Array:
         """Linear map version of `Center` reduction.

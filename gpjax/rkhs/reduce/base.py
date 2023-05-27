@@ -7,78 +7,13 @@ import jax.numpy as np
 from gpjax.typing import ScalarInt, ScalarFloat, ScalarBool
 
 
-from ..typing import ReduceableOrArray, NumberOrArray, AbstractReduce
-
-
-@dataclass
-class ChainedReduce(AbstractReduce):
-    reductions: List[AbstractReduce] = None
-
-    def __post_init__(self):
-        # Add to a list, flattening out instances of this class therein, as in GPFlow kernels.
-        reductions_list: List[AbstractReduce] = []
-
-        for r in self.reductions:
-            if not isinstance(r, AbstractReduce):
-                raise TypeError("can only combine Reduce instances")
-
-            if isinstance(r, self.__class__):
-                reductions_list.extend(r.reductions)
-            else:
-                reductions_list.append(r)
-
-        self.reductions = reductions_list
-
-    # FIXME: The return type of this function needs to be specified, but currently I don't know how to and not get BearType errors.
-    def __execute_chain(self, func: Callable, start_val: NumberOrArray) -> Any:
-        carry = start_val
-        # We assume that reductions are applied in reverse order.
-        # E.g. reduce1 @ reduce2 @ reduce3 @ gram results in the list
-        #  self.reductions = [reduce1, reduce2, reduce3]
-        # so to reflect the correct math, we need to apply the reductions in reverse order.
-        for gr in self.reductions[::-1]:
-            carry = func(gr, carry)
-        return carry
-
-    def new_len(self, original_len: int) -> int:
-        """Return the final length of an array after applying a chain of reductions.
-
-        Args:
-            original_len (int): Original length of the array.
-
-        Returns:
-            int: Final length of the array after applying the reductions.
-        """
-        return self.__execute_chain(lambda x, carry: x.new_len(carry), original_len)
-
-    def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
-        """Apply a list of reductions to an array.
-
-        Args:
-            inp (Array): Input array, typically a gram matrix.
-
-        Returns:
-            Array: Reduced array.
-        """
-        if self.reductions is None or len(self.reductions) == 0:
-            return inp
-        else:
-            return self.__execute_chain(lambda x, carry: x.__matmul__(carry), inp)
-
-    def __reduce_self__(self, other: AbstractReduce) -> "ChainedReduce":
-        """Combine two reductions into a single chained reduction.
-
-        Args:
-            other (AbstractReduce): The reduction to combine with.
-
-        Returns:
-            ChainedReduce: The combined reduction.
-        """
-        if isinstance(other, self.__class__):
-            # makes sure that the reductions are flattened out
-            return ChainedReduce(other.reductions + self.reductions)
-        else:
-            return ChainedReduce([other] + self.reductions)
+from ..typing import (
+    ReduceableOrArray,
+    NumberOrArray,
+    AbstractReduce,
+    NoReduce,
+    ChainedReduce,
+)
 
 
 @dataclass
@@ -106,6 +41,19 @@ class LinearReduce(AbstractReduce):
                 % (self.linear_map.shape[1], inp.shape[0])
             )
         return self.linear_map @ inp
+
+    def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
+        """Apply a reduction to the `self` object.
+
+        Args:
+            reduce (AbstractReduce): The reduction to apply.
+
+        Returns:
+            Any: The result of applying the reduction.
+        """
+        if isinstance(other_reduce, NoReduce):
+            return self
+        return ChainedReduce([other_reduce, self])
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
