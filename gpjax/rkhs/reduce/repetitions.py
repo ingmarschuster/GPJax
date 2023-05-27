@@ -50,7 +50,7 @@ def tile_view(inp: np.ndarray, reps: int) -> np.ndarray:
 
 
 @dataclass
-class Repeat(AbstractReduce):
+class Repeat(LinearizableReduce):
     """This reduction will repeat the input array `times` times.
 
     Args:
@@ -101,6 +101,17 @@ class Repeat(AbstractReduce):
             int: Length of the array after reduction.
         """
         return original_len * self.times
+
+    def linmap(self, gram_shape: tuple) -> Array:
+        """Compute the linear map of the reduction.
+
+        Args:
+            gram_shape (tuple): Shape of the gram matrix.
+
+        Returns:
+            Array: Linear map of the reduction.
+        """
+        return np.repeat(np.eye(gram_shape[0]), self.times, 0)
 
 
 @dataclass

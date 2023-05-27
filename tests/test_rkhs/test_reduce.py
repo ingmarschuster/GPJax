@@ -59,6 +59,8 @@ def test_LinearReduce():
     r = LinearReduce(np.array([(1, 1, 1, 1), (0.5, 0.5, 2, 2)], dtype=np.float32))
     rgr = r @ gram
     assert np.allclose(rgr[0], gram.sum(0))
+    assert np.allclose((r.linmap(gram.shape) @ gram)[0], gram.sum(0))
+    assert np.allclose((r.linearize(gram.shape) @ gram)[0], gram.sum(0))
     assert np.allclose(rgr[1], gram[:2].sum(0) / 2 + gram[2:].sum(0) * 2)
 
 
@@ -66,8 +68,10 @@ def test_Sum_Mean():
     gram = np.array(rng.randn(4, 3))
     for r, op in [(Sum(), np.sum), (Mean(), np.mean)]:
         rgr = r @ gram
+        rgr_l = r.linearize(gram.shape) @ gram
         ogr = op(gram, 0, keepdims=True)
         assert np.allclose(rgr, ogr)
+        assert np.allclose(rgr_l, ogr)
 
 
 def test_Prefactors_Scale():
@@ -80,8 +84,10 @@ def test_Prefactors_Scale():
         (Scale(2.0), lambda x: x * 2.0),
     ]:
         rgr = r @ gram
+        rgr_l = r.linearize(gram.shape) @ gram
         ogr = op(gram)
         assert np.allclose(rgr, ogr)
+        assert np.allclose(rgr_l, ogr)
 
 
 #  Repeat, TileView, NoReduce, ChainedReduce
@@ -94,23 +100,34 @@ def test_Repeat_Tile():
         (TileView(8), lambda x: np.tile(x, (2, 1))),
     ]:
         rgr = r @ gram
+        rgr_lm = r.linmap(gram.shape) @ gram
+        rgr_l = r.linearize(gram.shape) @ gram
         ogr = op(gram)
         assert np.allclose(rgr, ogr)
+        assert np.allclose(rgr_lm, ogr)
+        assert np.allclose(rgr_l, ogr)
 
 
 def test_NoReduce():
     gram = np.array(rng.randn(4, 3))
     r = NoReduce()
     rgr = r @ gram
+    rgr_l = r.linearize(gram.shape) @ gram
     assert np.allclose(rgr, gram)
+    assert np.allclose(rgr_l, gram)
 
 
 def test_ChainedReduce():
     gram = np.array(rng.randn(4, 3))
     r = ChainedReduce([TileView(16), Repeat(2)])
     rgr = r @ gram
+    rgr_l = r.linearize(gram.shape) @ gram
+    rgr_lm = r.linmap(gram.shape) @ gram
     ogr = np.tile(np.repeat(gram, 2, 0), (2, 1))
     assert np.allclose(rgr, ogr)
+    assert np.allclose(rgr_l, ogr)
+    assert np.allclose(rgr_lm, ogr)
+
     rgr = TileView(16) @ Repeat(2) @ gram
     assert np.allclose(rgr, ogr)
 

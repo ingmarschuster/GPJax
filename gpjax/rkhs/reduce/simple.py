@@ -116,7 +116,7 @@ class Prefactors(LinearizableReduce):
 
 
 @dataclass
-class Scale(AbstractReduce):
+class Scale(LinearizableReduce):
     """Scale the input array by a constant factor."""
 
     s: ScalarFloat = param_field(1.0)
@@ -156,6 +156,18 @@ class Scale(AbstractReduce):
             int: Length of the array after reduction, i.e. `original_len`.
         """
         return original_len
+
+    def linmap(self, gram_shape: tuple) -> Array:
+        """Compute the linear map associated with the scaling.
+
+        Args:
+            gram_shape (tuple): Shape of the gram matrix.
+            axis (int, optional): Axis along which to compute the linear map. Defaults to 0.
+
+        Returns:
+            Array: Linear map associated with the scaling.
+        """
+        return self.s * np.eye(gram_shape[0])
 
 
 class Sum(LinearizableReduce):
