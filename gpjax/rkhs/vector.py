@@ -86,7 +86,7 @@ class RkhsVec(AbstractRkhsVec):
 
 @dataclass
 class CombinationVec(AbstractRkhsVec):
-    rkhs_vecs: List[RkhsVec] = param_field([])
+    rkhs_vecs: List[AbstractRkhsVec] = param_field([])
     operator: Callable = static_field(None)
 
     def __post_init__(self):

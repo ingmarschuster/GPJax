@@ -44,7 +44,7 @@ from .. import kernels
 
 
 ReduceableOrArray = TypeVar(
-    "ReduceOrArray", "AbstractReduceable", Float[Array, "N ..."]
+    "ReduceableOrArray", "AbstractReduceable", Float[Array, "N ..."]
 )
 
 NumberOrArray = TypeVar(
@@ -347,4 +347,18 @@ class AbstractRkhsVec(AbstractReduceable):
 
     @abc.abstractmethod
     def __apply_reduce__(self, reduce: AbstractReduce) -> "RkhsVec":
+        pass
+
+
+class AbstractEncoder(abc.ABC, Module):
+    """Abstract class for RKHS vector encoders. These are used to encode input space data into RKHS vectors."""
+
+    @abc.abstractmethod
+    def __call__(self, inp: Any) -> AbstractRkhsVec:
+        """Encodes input data into an RKHS vector.
+        Args:
+            inp (Any): Input data set.
+        Returns:
+            FiniteVec: RKHS vector.
+        """
         pass

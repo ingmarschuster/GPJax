@@ -17,14 +17,14 @@ kernel_setups = [RBF(lengthscale=1.0), Matern12(), Matern32(), Matern52()]
 @pytest.mark.parametrize("kernel", kernel_setups)
 @pytest.mark.parametrize("N", [10])
 def test_RkhsVec(D, kernel, N):
-    X = rng.randn(N, D)
+    X = jnp.array(rng.randn(N, D))
     pref1 = Prefactors(jnp.ones(len(X)).astype(jnp.float32))
     rv = pref1 @ RkhsVec(k=kernel, insp_pts=X)
 
     assert rv.reduce[0] == pref1
 
     pref2 = Prefactors(jnp.ones(N + 1).astype(jnp.float32))
-    rv2 = Sum() @ pref2 @ RkhsVec(k=kernel, insp_pts=rng.randn(N + 1, D))
+    rv2 = Sum() @ pref2 @ RkhsVec(k=kernel, insp_pts=jnp.array(rng.randn(N + 1, D)))
     assert np.allclose(
         rv.outer_inner(rv),
         rv.k.gram(rv.insp_pts).to_dense()
@@ -39,7 +39,7 @@ def test_RkhsVec(D, kernel, N):
     ), "Simple vector computation not accurate"
 
     N = 4
-    X = rng.randn(N, D)
+    X = jnp.array(rng.randn(N, D))
 
     rv = (
         BalancedRed(2)
