@@ -14,6 +14,7 @@ import jax.numpy as np
 import jax.scipy as sp
 import jax.scipy.stats as stats
 from jaxtyping import Array, Float32, Int32, Float, Int
+from gpjax.base.param import param_field
 
 from gpjax.typing import (
     ScalarInt,
@@ -37,10 +38,10 @@ from ..base import (
 
 
 @dataclass
-class Prefactors(AbstractReduce):
+class Prefactors(LinearizableReduce):
     """Multiply the input array with a set of prefactors"""
 
-    prefactors: Float[Array, "N"]
+    prefactors: Float[Array, "N"] = param_field(np.ones((1,)))
 
     def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Multiply the input array with the prefactors.
@@ -101,12 +102,24 @@ class Prefactors(AbstractReduce):
             )
         return original_len
 
+    def linmap(self, gram_shape: tuple) -> Array:
+        """Compute the linear map associated with the prefactors.
+
+        Args:
+            gram_shape (tuple): Shape of the gram matrix.
+            axis (int, optional): Axis along which to compute the linear map. Defaults to 0.
+
+        Returns:
+            Array: Linear map associated with the prefactors.
+        """
+        return np.diag(self.prefactors)
+
 
 @dataclass
 class Scale(AbstractReduce):
     """Scale the input array by a constant factor."""
 
-    s: ScalarFloat
+    s: ScalarFloat = param_field(1.0)
 
     def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Scale the input array.
@@ -195,7 +208,7 @@ class Sum(LinearizableReduce):
         """
         return 1
 
-    def linmap(self, gram_shape: tuple, axis: int = 0) -> Array:
+    def linmap(self, gram_shape: tuple) -> Array:
         """Linear map version of `Sum` reduction.
 
         Args:
@@ -205,7 +218,7 @@ class Sum(LinearizableReduce):
         Returns:
             Array: A linear operator that can be applied to the input matrix to sum over `axis`.
         """
-        return np.ones((1, gram_shape[axis]))
+        return np.ones((1, gram_shape[0]))
 
 
 class Mean(LinearizableReduce):
@@ -248,7 +261,7 @@ class Mean(LinearizableReduce):
         """
         return 1
 
-    def linmap(self, gram_shape: tuple, axis: int = 0) -> Array:
+    def linmap(self, gram_shape: tuple) -> Array:
         """Linear map version of mean reduction.
 
         Args:
@@ -258,7 +271,7 @@ class Mean(LinearizableReduce):
         Returns:
             Array: A linear operator that can be applied to the input matrix to average over `axis`.
         """
-        return np.ones((1, gram_shape[axis])) / gram_shape[axis]
+        return np.ones((1, gram_shape[0])) / gram_shape[0]
 
 
 @dataclass
@@ -322,7 +335,7 @@ class BalancedRed(LinearizableReduce):
             return self
         return ChainedReduce([other_reduce, self])
 
-    def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
+    def linmap(self, inp_shape: tuple) -> Array:
         """Linear map version of `BalancedRed` reduction.
 
         Args:
@@ -332,8 +345,8 @@ class BalancedRed(LinearizableReduce):
         Returns:
             Array: A linear operator that can be applied to the input matrix and get the same result as the reduction.
         """
-        new_len = self.new_len(inp_shape[axis])
-        rval = np.zeros((new_len, inp_shape[axis]))
+        new_len = self.new_len(inp_shape[0])
+        rval = np.zeros((new_len, inp_shape[0]))
         for i in range(new_len):
             rval = rval.at[
                 i, i * self.points_per_split : (i + 1) * self.points_per_split
@@ -382,7 +395,7 @@ class Center(LinearizableReduce):
             return self
         return ChainedReduce([other_reduce, self])
 
-    def linmap(self, gram_shape: tuple, axis: int = 0) -> Array:
+    def linmap(self, gram_shape: tuple) -> Array:
         """Linear map version of `Center` reduction.
 
         Args:
@@ -393,8 +406,8 @@ class Center(LinearizableReduce):
             Array: A linear operator that can be applied to the input matrix to center over `axis`.
         """
         return (
-            np.eye(gram_shape[axis])
-            - np.ones((gram_shape[axis], gram_shape[axis])) / gram_shape[axis]
+            np.eye(gram_shape[0])
+            - np.ones((gram_shape[0], gram_shape[0])) / gram_shape[0]
         )
 
     def new_len(self, original_len: int) -> int:

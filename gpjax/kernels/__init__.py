@@ -44,6 +44,8 @@ from gpjax.kernels.stationary import (
     White,
 )
 
+from .encoderbased import EncoderKernel
+
 __all__ = [
     "AbstractKernel",
     "ArcCosine",
@@ -66,4 +68,5 @@ __all__ = [
     "White",
     "BasisFunctionComputation",
     "RFF",
+    "EncoderKernel",
 ]

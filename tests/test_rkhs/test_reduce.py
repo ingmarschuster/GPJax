@@ -35,7 +35,7 @@ def test_SparseReduce():
         ],
         True,
     )
-    r2 = r1.linearize(gram.shape, 0)
+    r2 = r1.linearize(gram.shape)
     for r in [r1, r2]:
         rgr = r @ gram
         assert np.allclose(rgr[0], (gram[0] + gram[1]) / 2)
@@ -119,12 +119,12 @@ def test_BalancedRed():
     gram = np.array(rng.randn(4, 3))
     red = BalancedRed(2)
     expected_result = np.array([gram[:2].sum(0), gram[2:].sum(0)])
-    for r in red, red.linearize(gram.shape, 0):
+    for r in red, red.linearize(gram.shape):
         assert np.allclose(r @ gram, expected_result)
 
     red = BalancedRed(2, True)
     expected_result = np.array([gram[:2].sum(0) / 2, gram[2:].sum(0) / 2])
-    for r in red, red.linearize(gram.shape, 0):
+    for r in red, red.linearize(gram.shape):
         assert np.allclose(r @ gram, expected_result)
 
 
@@ -132,7 +132,7 @@ def test_Center():
     gram = np.array(rng.randn(4, 3))
     red = Center()
     expected_result = gram - gram.mean(0)
-    for r in red, red.linearize(gram.shape, 0):
+    for r in red, red.linearize(gram.shape):
         assert np.allclose(r @ gram, expected_result)
 
 

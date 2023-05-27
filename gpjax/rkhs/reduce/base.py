@@ -4,6 +4,7 @@ from typing import Any
 from jaxtyping import Float, Array, Int
 from beartype.typing import Union, Callable, List, TypeVar, Tuple
 import jax.numpy as np
+from gpjax.base.param import param_field
 from gpjax.typing import ScalarInt, ScalarFloat, ScalarBool
 
 
@@ -20,7 +21,7 @@ from ..base import (
 class LinearReduce(AbstractReduce):
     """Reduction defined by a linear map."""
 
-    linear_map: Float[Array, "N M"]
+    linear_map: Float[Array, "N M"] = param_field(np.ones((1, 1)))
 
     def __reduce_array__(self, inp: Float[Array, "N ..."]) -> Float[Array, "M ..."]:
         """Reduce the first axis of the input matrix.
@@ -135,24 +136,22 @@ class LinearReduce(AbstractReduce):
 class LinearizableReduce(AbstractReduce):
     """Reduction that can be linearized."""
 
-    def linearize(self, gram_shape: tuple, axis: int = 0) -> LinearReduce:
+    def linearize(self, gram_shape: tuple) -> LinearReduce:
         """Linearize the reduction.
 
         Args:
             gram_shape (tuple): Shape of the gram matrix.
-            axis (int, optional): Axis to apply reduction over. Defaults to 0.
 
         Returns:
             LinearReduce: The linearized reduction.
         """
-        return LinearReduce(self.linmap(gram_shape, axis))
+        return LinearReduce(self.linmap(gram_shape))
 
     @abstractmethod
-    def linmap(self, gram_shape: tuple, axis: int = 0) -> Array:
+    def linmap(self, gram_shape: tuple) -> Array:
         """Linear map equivalent to reduction.
 
         Args:
             gram_shape (tuple): The gram matrix shape.
-            axis (int, optional): Axis to apply reduction over. Defaults to 0.
         """
         pass

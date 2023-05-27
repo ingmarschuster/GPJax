@@ -107,12 +107,38 @@ class Repeat(AbstractReduce):
 class TileView(LinearizableReduce):
     """Tile the input array. This reduction provides a view on the input array, avoiding data copy."""
 
-    result_len: int
+    result_len: int = None
+    tile_times: int = None
 
     def __post_init__(self):
         """This reduction will tile the input array `result_len` times."""
-        if self.result_len < 2:
+        # check that either tile_times or result_len is set, but not both
+        if (self.tile_times is None and self.result_len is None) or (
+            self.tile_times is not None and self.result_len is not None
+        ):
+            raise ValueError("TileView must have either tile_times or result_len set")
+
+        if self.result_len is not None and self.result_len < 2:
             raise ValueError("TileView result_len must be greater than 1")
+        if self.tile_times is not None and self.tile_times < 2:
+            raise ValueError("TileView tile_times must be greater than 1")
+
+    def __get_repeats__(self, original_len: int) -> int:
+        """Compute the number of times to repeat the input array.
+
+        Args:
+            original_len (int): Original length of the array.
+
+        Returns:
+            int: Number of times to repeat the input array.
+        """
+        if self.tile_times is not None:
+            return self.tile_times
+        if self.result_len % original_len != 0:
+            raise ValueError(
+                "Input can't be broadcasted to target length %d" % self.result_len
+            )
+        return self.result_len // original_len
 
     def __reduce_array__(self, inp: Float[Array, "N M"]) -> Float[Array, "K M"]:
         """Reduce the first axis of the input array by tiling it.
@@ -141,12 +167,7 @@ class TileView(LinearizableReduce):
         """
         if isinstance(inp, AbstractReduce):
             return ChainedReduce([self, inp])
-        if self.result_len % inp.shape[0] != 0:
-            raise ValueError(
-                "Input can't be broadcasted to target length %d" % self.result_len
-            )
-        repeats = self.result_len // inp.shape[0]
-        print("Tiling %d times" % repeats)
+        repeats = self.__get_repeats__(inp.shape[0])
         return tile_view(inp, repeats)
 
     def __apply_reduce__(self, other_reduce: "AbstractReduce") -> "AbstractReduce":
@@ -162,7 +183,7 @@ class TileView(LinearizableReduce):
             return self
         return ChainedReduce([other_reduce, self])
 
-    def linmap(self, inp_shape: tuple, axis: int = 0) -> Array:
+    def linmap(self, inp_shape: tuple) -> Array:
         """Linear map version of reduce_first_ax for the tile view reduction.
 
         Args:
@@ -172,7 +193,7 @@ class TileView(LinearizableReduce):
         Returns:
             Array: A linear operator that can be applied to the input matrix and get a tiled result.
         """
-        return tile_view(np.eye(inp_shape[axis]), self.result_len // inp_shape[axis])
+        return tile_view(np.eye(inp_shape[0]), self.__get_repeats__(inp_shape[0]))
 
     def new_len(self, original_len: int) -> int:
         """Compute the new length of the array after reduction.
@@ -294,14 +315,11 @@ class SparseReduce(LinearizableReduce):
         )
         return len(self.idcs)
 
-    def linmap(
-        self, inp_shape: Tuple[ScalarInt, ScalarInt], axis: int = 0
-    ) -> Float[Array, "N M"]:
+    def linmap(self, inp_shape: Tuple[ScalarInt, ScalarInt]) -> Float[Array, "N M"]:
         """Get the linear map that reduces the first axis of the input.
 
         Args:
             inp_shape (Tuple[ScalarInt, ScalarInt]): The shape of the input.
-            axis (ScalarInt, optional): The axis to reduce. Defaults to 0.
 
         Returns:
             Float[Array, "N M"]: The linear map that reduces the first axis of the input.
@@ -318,7 +336,7 @@ class SparseReduce(LinearizableReduce):
 
         """
         n_in = self.max_idx + 1
-        if inp_shape[axis] != n_in:
+        if inp_shape[0] != n_in:
             raise ValueError("Input shape does not match reduction assumptions")
         n_out = int(np.sum(np.array([len(i) for i in self.idcs])))
         offset = 0
