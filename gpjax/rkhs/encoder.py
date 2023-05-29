@@ -34,7 +34,8 @@ from gpjax.typing import (
 from . import reduce as red
 from .. import kernels
 from .base import AbstractEncoder
-from .vector import RkhsVec
+from .vector import RkhsVec, AbstractRkhsVec
+import datasets as ds
 
 
 @dataclass
@@ -44,13 +45,13 @@ class StandardEncoder(AbstractEncoder):
 
     k: kernels.AbstractKernel = param_field(kernels.RBF())
 
-    def __call__(self, inp: Any) -> AbstractEncoder:
+    def __call__(self, inp: Any) -> AbstractRkhsVec:
         """Encodes input array into an RKHS vector, where the kernel is applied to each element of the input array.
 
         Args:
             inp (Array): Input array.
 
         Returns:
-            FiniteVec: RKHS vector.
+            AbstractRkhsVec: RKHS vector.
         """
         return RkhsVec(k=self.k, insp_pts=inp)

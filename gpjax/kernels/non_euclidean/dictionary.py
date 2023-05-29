@@ -77,7 +77,7 @@ class DictKernel(AbstractKernel):
             )
         L = self.sdev.reshape(-1, 1) * self.cholesky_lower
 
-        self.gram = L @ L.T
+        self.explicit_gram = L @ L.T
 
     def __call__(  # TODO not consistent with general kernel interface
         self,
@@ -94,7 +94,12 @@ class DictKernel(AbstractKernel):
         -------
             ScalarFloat: The value of $k(v_i, v_j)$.
         """
-        return self.gram[x, y]
+        try:
+            x = x.squeeze()
+            y = y.squeeze()
+        except AttributeError:
+            pass
+        return self.explicit_gram[x, y]
 
     @classmethod
     def num_cholesky_lower_params(cls, num_inspace_vals: ScalarInt) -> ScalarInt:

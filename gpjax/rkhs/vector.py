@@ -90,7 +90,6 @@ class CombinationVec(AbstractRkhsVec):
     operator: Callable = static_field(None)
 
     def __post_init__(self):
-        super().__post_init__()
         orig_size = self.rkhs_vecs[0].size
         for rkhs_vec in self.rkhs_vecs:
             if len(rkhs_vec) != orig_size:
@@ -137,10 +136,11 @@ class CombinationVec(AbstractRkhsVec):
         Returns:
             Float[Array]: A matrix of shape (self.size, other.size) containing the dot products.
         """
-        if self.k != other.k:
-            raise TypeError(
-                f"Trying to compute inner products between elements of different RKHSs (Kernel types do not match)"
-            )
+        for i in range(len(self.rkhs_vecs)):
+            if self.rkhs_vecs[i].k != other.rkhs_vecs[i].k:
+                raise TypeError(
+                    f"Trying to compute inner products between elements of different RKHSs (Kernel types do not match)"
+                )
         # compute the gram matrix for all pairs of elements in self and other
         raw_grams = jnp.array(
             [
@@ -166,5 +166,5 @@ class CombinationVec(AbstractRkhsVec):
         )
 
 
-SumVec = partial(CombinationVec, operator=jnp.add)
-ProductVec = partial(CombinationVec, operator=jnp.multiply)
+SumVec = partial(CombinationVec, operator=jnp.sum)
+ProductVec = partial(CombinationVec, operator=jnp.prod)

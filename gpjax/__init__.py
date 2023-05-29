@@ -68,7 +68,7 @@ from gpjax.variational_families import (
     WhitenedVariationalGaussian,
 )
 
-import gpjax.rkhs.reduce as reduce
+from . import rkhs
 
 __license__ = "MIT"
 __description__ = "Didactic Gaussian processes in JAX"
