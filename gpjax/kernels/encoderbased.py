@@ -1,9 +1,4 @@
 from dataclasses import dataclass
-from typing import Type
-from gpjax.kernels.computations import HfDenseKernelComputation
-from gpjax.base.module import static_field
-
-from gpjax.kernels.computations.base import AbstractKernelComputation
 from .base import AbstractKernel
 from ..rkhs.base import AbstractEncoder
 from ..rkhs.encoder import StandardEncoder
@@ -15,9 +10,6 @@ from beartype.typing import Any
 
 @dataclass
 class EncoderKernel(AbstractKernel):
-    compute_engine: Type[AbstractKernelComputation] = static_field(
-        HfDenseKernelComputation
-    )
     enc: AbstractEncoder = param_field(StandardEncoder(RBF()))
 
     def __call__(
@@ -36,4 +28,4 @@ class EncoderKernel(AbstractKernel):
             ScalarFloat: The evaluated kernel function at the supplied inputs.
         """
         # print(x.shape, y.shape, x[..., None].shape)
-        return self.enc(x[..., None]).outer_inner(self.enc(y[..., None])).squeeze()
+        return self.enc(x).outer_inner(self.enc(y)).squeeze()

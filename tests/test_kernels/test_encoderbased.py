@@ -44,18 +44,3 @@ def test_encoderkernel() -> None:
     y = jnp.linspace(4, 6, 10)[:, None]
     assert jnp.allclose(k.gram(x).to_dense(), inner_kernel.gram(x).to_dense())
     assert jnp.allclose(k.cross_covariance(x, y), inner_kernel.cross_covariance(x, y))
-
-
-def test_encoderkernelhf() -> None:
-    inner_kernel = gpx.kernels.RBF()
-    k = EncoderKernel(
-        enc=gpx.rkhs.encoder.HfStandardEncoder(inner_kernel),
-    )
-    x = jnp.linspace(0, 1, 10)[:, None]
-    y = jnp.linspace(4, 6, 10)[:, None]
-    x_hf = ds.Dataset.from_dict({"x": x})
-    y_hf = ds.Dataset.from_dict({"x": y})
-    assert jnp.allclose(k.gram(x_hf).to_dense(), inner_kernel.gram(x).to_dense())
-    assert jnp.allclose(
-        k.cross_covariance(x_hf, y_hf), inner_kernel.cross_covariance(x, y)
-    )

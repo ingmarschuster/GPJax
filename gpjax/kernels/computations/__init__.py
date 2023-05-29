@@ -19,7 +19,6 @@ from gpjax.kernels.computations.constant_diagonal import (
     ConstantDiagonalKernelComputation,
 )
 from gpjax.kernels.computations.dense import DenseKernelComputation
-from gpjax.kernels.computations.hfdense import HfDenseKernelComputation
 from gpjax.kernels.computations.diagonal import DiagonalKernelComputation
 from gpjax.kernels.computations.eigen import EigenKernelComputation
 
@@ -30,5 +29,4 @@ __all__ = [
     "DenseKernelComputation",
     "DiagonalKernelComputation",
     "EigenKernelComputation",
-    "HfDenseKernelComputation",
 ]
