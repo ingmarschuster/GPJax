@@ -26,6 +26,8 @@ from ..base import ReduceableOrArray, NumberOrArray, AbstractReduce
 
 from .base import LinearizableReduce, LinearReduce, NoReduce, ChainedReduce
 
+from gpjax.base import param_field, static_field
+
 
 def tile_view(inp: np.ndarray, reps: int) -> np.ndarray:
     """Tile a view of an array
@@ -118,8 +120,8 @@ class Repeat(LinearizableReduce):
 class TileView(LinearizableReduce):
     """Tile the input array. This reduction provides a view on the input array, avoiding data copy."""
 
-    result_len: int = None
-    tile_times: int = None
+    result_len: int = static_field(None)
+    tile_times: int = static_field(None)
 
     def __post_init__(self):
         """This reduction will tile the input array `result_len` times."""
@@ -228,8 +230,8 @@ class SparseReduce(LinearizableReduce):
     """
 
     idcs: List[Int[Array, "N M"]]
-    average: bool = True
-    max_idx: int = None
+    average: bool = static_field(True)
+    max_idx: int = static_field(None)
 
     def __post_init__(
         self,

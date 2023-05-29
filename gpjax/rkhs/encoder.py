@@ -55,3 +55,23 @@ class StandardEncoder(AbstractEncoder):
             AbstractRkhsVec: RKHS vector.
         """
         return RkhsVec(k=self.k, insp_pts=inp)
+
+
+@dataclass
+class HfStandardEncoder(AbstractEncoder):
+    """Encodes input HF Dataset into an RKHS vector, where the kernel is applied to each element of the input array.
+    In other words, this is the standard mapping of classical kernel methods."""
+
+    k: kernels.AbstractKernel = param_field(kernels.RBF())
+    targ_name: str = static_field("x")
+
+    def __call__(self, inp: ds.Dataset) -> AbstractRkhsVec:
+        """Encodes input array into an RKHS vector, where the kernel is applied to each element of the input array.
+
+        Args:
+            inp (Array): Input array.
+
+        Returns:
+            AbstractRkhsVec: RKHS vector.
+        """
+        return RkhsVec(k=self.k, insp_pts=inp.with_format("jax")[self.targ_name])
