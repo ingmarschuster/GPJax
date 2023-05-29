@@ -21,6 +21,7 @@ from jaxtyping import Num
 from simple_pytree import Pytree
 
 from gpjax.typing import Array
+import datasets as ds
 
 
 @dataclass
@@ -95,7 +96,7 @@ def _check_shape(
             f" Got X.shape={X.shape} and y.shape={y.shape}."
         )
 
-    if X is not None and X.ndim != 2:
+    if X is not None and not isinstance(X, ds.Dataset) and X.ndim != 2:
         raise ValueError(
             f"Inputs, X, must be a 2-dimensional array. Got X.ndim={X.ndim}."
         )

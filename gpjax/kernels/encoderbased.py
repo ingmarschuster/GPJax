@@ -1,4 +1,9 @@
 from dataclasses import dataclass
+from typing import Type
+from gpjax.kernels.computations import HfDenseKernelComputation
+from gpjax.base.module import static_field
+
+from gpjax.kernels.computations.base import AbstractKernelComputation
 from .base import AbstractKernel
 from ..rkhs.base import AbstractEncoder
 from ..rkhs.encoder import StandardEncoder
@@ -10,6 +15,9 @@ from beartype.typing import Any
 
 @dataclass
 class EncoderKernel(AbstractKernel):
+    compute_engine: Type[AbstractKernelComputation] = static_field(
+        HfDenseKernelComputation
+    )
     enc: AbstractEncoder = param_field(StandardEncoder(RBF()))
 
     def __call__(
