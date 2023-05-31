@@ -467,18 +467,17 @@ class SparseReduce(LinearizableReduce):
         return un_sorted, cts_sorted, SparseReduce(el, mean)
 
 
-def Kmer(
+def MovingAverage(
     k: ScalarInt,
     seq_length: ScalarInt,
     average: ScalarBool,
     output_format: str = "linear",
 ) -> Union[np.ndarray, SparseReduce, LinearReduce]:
-    """Generate a k-mer matrix for a sequence of length seq_length.
-    Another name for k-mer is n-gram.
+    """Generate a moving average/sum matrix for a sequence of length seq_length.
     Either return the binary matrix or a SparseReduce object.
 
     Args:
-        k (ScalarInt): The k in k-mer.
+        k (ScalarInt): The window size.
         seq_length (ScalarInt): The length of the sequence. You can also specify a max sequence length and The output matrix will have shape (k, seq_length).
         average (ScalarBool): Whether to average the k elements for each k-mer.
         output_format (str, optional): Either "linear" or "sparse" to get a Reduce object. Using "matrix" will return the binary matrix. Using "index" will return the indices of the k-mers. Defaults to "linear".
