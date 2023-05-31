@@ -471,6 +471,7 @@ def MovingAverage(
     k: ScalarInt,
     seq_length: ScalarInt,
     average: ScalarBool,
+    step: ScalarInt = 1,
     output_format: str = "linear",
 ) -> Union[np.ndarray, SparseReduce, LinearReduce]:
     """Generate a moving average/sum matrix for a sequence of length seq_length.
@@ -480,22 +481,24 @@ def MovingAverage(
         k (ScalarInt): The window size.
         seq_length (ScalarInt): The length of the sequence. You can also specify a max sequence length and The output matrix will have shape (k, seq_length).
         average (ScalarBool): Whether to average the k elements for each k-mer.
+        step (ScalarInt, optional): The step size. Defaults to 1.
         output_format (str, optional): Either "linear" or "sparse" to get a Reduce object. Using "matrix" will return the binary matrix. Using "index" will return the indices of the k-mers. Defaults to "linear".
     Returns:
         Union[np.ndarray, SparseReduce, LinearReduce]: The k-mer binary/index matrix or a Reduce object.
     """
-    if seq_length < k or k <= 1 or seq_length <= 1:
+    if seq_length < k or k <= 1 or seq_length <= 1 or step <= 0:
         raise ValueError(
-            f"seq_length ({seq_length}) must be greater than k ({k}) and both must be greater than 1."
+            f"seq_length ({seq_length}) must be greater than k ({k}) and both must be greater than 1. Step ({step}) must be greater than 0."
         )
-    num_kmers = seq_length - k + 1
-    idx = np.arange(num_kmers)[:, None] + np.arange(k)[None, :]
+
+    num_windows = (seq_length - k) // step + 1
+    idx = np.arange(k)[None, :] + step * np.arange(num_windows)[:, None]
     if output_format == "index":
         return idx
     elif output_format == "sparse":
         return SparseReduce([idx], average)
-    A = np.zeros((num_kmers, seq_length), dtype=np.float32)
-    A = A.at[np.arange(num_kmers)[:, None], idx].set(1)
+    A = np.zeros((num_windows, seq_length), dtype=np.float32)
+    A = A.at[np.arange(num_windows)[:, None], idx].set(1)
     if average:
         A = A / k
     if output_format == "binary":
