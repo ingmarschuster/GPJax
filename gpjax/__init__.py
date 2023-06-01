@@ -59,6 +59,7 @@ from gpjax.objectives import (
     ConjugateMLL,
     LogPosteriorDensity,
     NonConjugateMLL,
+    ConjugateRankLoss,
 )
 from gpjax.variational_families import (
     CollapsedVariationalGaussian,

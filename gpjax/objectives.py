@@ -21,6 +21,9 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
+# from fast_soft_sort.jax_ops import soft_rank, soft_sort
+import fast_soft_sort as fss
+
 tfd = tfp.distributions
 
 
@@ -131,6 +134,39 @@ class ConjugateMLL(AbstractObjective):
         mll = GaussianDistribution(jnp.atleast_1d(mx.squeeze()), Sigma)
 
         return self.constant * (mll.log_prob(jnp.atleast_1d(y.squeeze())).squeeze())
+
+
+@dataclass
+class ConjugateRankLoss(AbstractObjective):
+    ucb_beta: float = static_field(0.0)
+
+    def step(
+        self,
+        posterior: "gpjax.gps.ConjugatePosterior",  # noqa: F821
+        train_data: Dataset,  # noqa: F821
+    ) -> ScalarFloat:
+        r"""Evaluate the ranking loss of the Gaussian process on the training data."""
+        x, y, n = train_data.X, train_data.y, train_data.n
+
+        mx = posterior.prior.mean_function(x)
+
+        if self.ucb_beta == 0.0:
+            ucb = mx.squeeze()
+        else:
+            # Compute the upper confidence bound
+            # Σ = (Kxx + Io²) = LLᵀ
+            Kxx = posterior.prior.kernel.gram(x)
+            Kxx += identity(n) * posterior.prior.jitter
+            Sigma = Kxx + identity(n) * posterior.likelihood.obs_noise
+            ucb = (mx + self.ucb_beta * jnp.sqrt(jnp.diag(Sigma))).squeeze()
+
+        # p(y | x, θ), where θ are the model hyperparameters:
+        actual_order = jnp.argsort(y.squeeze())
+        predicted_order = fss.soft_rank(ucb.squeeze()) - 1.0
+
+        # loss = rax.approx_t12n(rax.ndcg_metric)(ucb, y.squeeze())
+
+        return jnp.sum((actual_order - predicted_order) ** 2)
 
 
 class LogPosteriorDensity(AbstractObjective):
