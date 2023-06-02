@@ -482,7 +482,7 @@ def MovingAverage(
         seq_length (ScalarInt): The length of the sequence. You can also specify a max sequence length and The output matrix will have shape (k, seq_length).
         average (ScalarBool): Whether to average the k elements for each k-mer.
         step (ScalarInt, optional): The step size. Defaults to 1.
-        output_format (str, optional): Either "linear" or "sparse" to get a Reduce object. Using "matrix" will return the binary matrix. Using "index" will return the indices of the k-mers. Defaults to "linear".
+        output_format (str, optional): Either "linear" or "sparse" to get a Reduce object. Using "matrix" will return the summing/averaging matrix. Using "index" will return the indices of the k-mers. Defaults to "linear".
     Returns:
         Union[np.ndarray, SparseReduce, LinearReduce]: The k-mer binary/index matrix or a Reduce object.
     """
@@ -501,10 +501,43 @@ def MovingAverage(
     A = A.at[np.arange(num_windows)[:, None], idx].set(1)
     if average:
         A = A / k
-    if output_format == "binary":
+    if output_format == "matrix":
         return A
     elif output_format == "linear":
         return LinearReduce(A)
     raise ValueError(
-        f"output_format must be either 'linear', 'sparse', 'binary', or 'index', but got {output_format}."
+        f"output_format must be either 'linear', 'sparse', 'matrix', or 'index', but got {output_format}."
+    )
+
+
+def Kmer(
+    k: int,
+    seq_length: int,
+    average: bool = True,
+    output_format: str = "linear",
+) -> Union[np.ndarray, LinearReduce]:
+    """Generate a k-mer linear map A to be applied to a matrix B of shape (seq_length x embedding_dim).
+    The shape of A @ B would then be (k x embedding_dim).
+
+    Args:
+        k (int): The k-mer length.
+        seq_length (int): The length of the sequence.
+        average (bool, optional): Whether to average the k elements for each k-mer. Defaults to True.
+        output_format (str, optional): Either "linear" or "binary" to get a Reduce object. Using "matrix" will return the binary matrix. Using "index" will return the indices of the k-mers. Defaults to "linear".
+
+    Returns:
+        Union[np.ndarray, LinearReduce]: A k-mer matrix of shape (k, seq_length) or a LinearReduce with this matrix inside.
+    """
+
+    A = np.zeros((k, seq_length))
+    for i in range(0, k):
+        A = A.at[i, i : i + seq_length - k + 1].set(1)
+    if average:
+        A = A / k
+    if output_format == "matrix":
+        return A
+    elif output_format == "linear":
+        return LinearReduce(A)
+    raise ValueError(
+        f"output_format must be either 'linear' or 'matrix', but got {output_format}."
     )

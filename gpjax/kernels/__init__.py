@@ -44,6 +44,8 @@ from gpjax.kernels.stationary import (
     White,
 )
 
+from .combination import LinearmapKernel, ConvexcombinationKernel, FeatmapKernel
+
 from .encoderbased import EncoderKernel
 
 __all__ = [
@@ -70,4 +72,7 @@ __all__ = [
     "RFF",
     "DictKernel",
     "EncoderKernel",
+    "LinearmapKernel",
+    "FeatmapKernel",
+    "ConvexcombinationKernel",
 ]

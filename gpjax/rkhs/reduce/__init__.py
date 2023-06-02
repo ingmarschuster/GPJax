@@ -8,4 +8,4 @@ from .base import (
 from .simple import NoReduce, Prefactors, Scale, Sum, Mean, BalancedRed, Center
 
 
-from .repetitions import SparseReduce, Repeat, TileView, MovingAverage
+from .repetitions import SparseReduce, Repeat, TileView, MovingAverage, Kmer
