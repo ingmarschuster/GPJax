@@ -21,8 +21,7 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-# from fast_soft_sort.jax_ops import soft_rank, soft_sort
-import fast_soft_sort as fss
+from gpjax.softrank import soft_rank
 
 tfd = tfp.distributions
 
@@ -145,28 +144,35 @@ class ConjugateRankLoss(AbstractObjective):
         posterior: "gpjax.gps.ConjugatePosterior",  # noqa: F821
         train_data: Dataset,  # noqa: F821
     ) -> ScalarFloat:
-        r"""Evaluate the ranking loss of the Gaussian process on the training data."""
         x, y, n = train_data.X, train_data.y, train_data.n
 
+        # Observation noise o²
+        obs_noise = posterior.likelihood.obs_noise
         mx = posterior.prior.mean_function(x)
-
-        if self.ucb_beta == 0.0:
-            ucb = mx.squeeze()
-        else:
-            # Compute the upper confidence bound
-            # Σ = (Kxx + Io²) = LLᵀ
-            Kxx = posterior.prior.kernel.gram(x)
-            Kxx += identity(n) * posterior.prior.jitter
-            Sigma = Kxx + identity(n) * posterior.likelihood.obs_noise
-            ucb = (mx + self.ucb_beta * jnp.sqrt(jnp.diag(Sigma))).squeeze()
+        # Σ = (Kxx + Io²) = LLᵀ
+        Kxx = posterior.prior.kernel.gram(x)
+        Kxx += identity(n) * posterior.prior.jitter
+        Sigma = Kxx + identity(n) * obs_noise
+        pred_y = Sigma @ Sigma.solve(y)
 
         # p(y | x, θ), where θ are the model hyperparameters:
-        actual_order = jnp.argsort(y.squeeze())
-        predicted_order = fss.soft_rank(ucb.squeeze()) - 1.0
+        ucb = (
+            pred_y.squeeze() + self.ucb_beta * jnp.sqrt(jnp.diag(Sigma.to_dense()))
+        ).squeeze()
+
+        # p(y | x, θ), where θ are the model hyperparameters:
+        actual_rank = jnp.argsort(jnp.argsort(y.squeeze()))
+        predicted_rank = (
+            soft_rank(ucb.squeeze()[None, :], regularization_strength=1).squeeze() - 1.0
+        )
 
         # loss = rax.approx_t12n(rax.ndcg_metric)(ucb, y.squeeze())
+        # mll = GaussianDistribution(jnp.atleast_1d(mx.squeeze()), Sigma)
+        # mll_loss = -(mll.log_prob(jnp.atleast_1d(y.squeeze())).squeeze())
+        rank_loss = self.constant * jnp.sum((actual_rank - predicted_rank) ** 2)
 
-        return jnp.sum((actual_order - predicted_order) ** 2)
+        # assert False
+        return rank_loss  # mll_loss
 
 
 class LogPosteriorDensity(AbstractObjective):

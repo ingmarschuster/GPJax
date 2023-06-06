@@ -71,18 +71,21 @@ class AdapterKernel(AbstractKernel):
             self.base_kernel = self.base_kernel.replace_trainable(variance=False)
         except ValueError:
             pass
+        if not isinstance(self.features, list):
+            self.features = [self.features]
 
     def __call__(self, x: PyTree, y: PyTree) -> ScalarFloat:
-        if len(self.feature) == 1:
-            x = x[self.feature[0]]
-            y = y[self.feature[0]]
-        self.base_kernel(x, y)
+        if len(self.features) == 1:
+            x = x[self.features[0]]
+            y = y[self.features[0]]
+        return self.base_kernel(x, y)
 
 
 @dataclass
 class ConvexcombinationKernel(AbstractKernel):
     r"""A kernel that is a convex combination of other kernels."""
     name: str = static_field("ConvexcombinationKernel")
+    features: List[str] = static_field([])
     variance: ScalarFloat = param_field(jnp.array(1.0), bijector=tfb.Softplus())
     kernels: List[AdapterKernel] = None
 
@@ -92,18 +95,22 @@ class ConvexcombinationKernel(AbstractKernel):
 
     def __post_init__(self):
         self.features = []
-        for i in self.kernels:
-            self.features.extend(i.features)
+        for i, k in enumerate(self.kernels):
+            self.features.extend(k.features)
+            try:
+                self.kernels[i] = k.replace_trainable(variance=False)
+            except ValueError:
+                pass
         if self.weights.size != len(self.kernels):
             raise ValueError(
                 f"Number of weights ({self.weights.size}) must match number of kernels ({len(self.kernels)})"
             )
 
     def __call__(self, x1: PyTree, x2: PyTree, **kwargs):
-        rval = []
-        for w, k in zip(self.weights, self.idcs):
-            rval.append(w * self.kernels[k](x1, x2, **kwargs))
-        return sum(rval) * self.variance
+        rval = 0
+        for w, k in zip(self.weights, self.kernels):
+            rval += w * k(x1, x2, **kwargs)
+        return rval * self.variance
 
 
 @dataclass
@@ -112,13 +119,12 @@ class Kmer1HotKernel(AbstractKernel):
     name: str = static_field("Kmer1hot")
     base_kernel: AbstractKernel = param_field(RBF())
     # Todo: probably should make this a Module
-    features: List[str] = static_field(["aa_1hot"])
     lmap: Float[Array, "..."] = param_field(jnp.ones(1), trainable=False)
     # max_seq_len: ScalarInt = static_field(100)
 
     def __call__(self, x1: PyTree, x2: PyTree, **kwargs):
         return self.base_kernel(
-            self.lmap @ x1[self.features[0]].reshape(self.lmap.shape[1], -1),
-            self.lmap @ x2[self.features[0]].reshape(self.lmap.shape[1], -1),
+            self.lmap @ x1.reshape(self.lmap.shape[1], -1),
+            self.lmap @ x2.reshape(self.lmap.shape[1], -1),
             **kwargs,
         )
