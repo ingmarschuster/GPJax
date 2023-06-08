@@ -22,7 +22,6 @@ This implementation follows the notation of the paper whenever possible.
 """
 
 import functools
-from .third_party import isotonic
 import jax.numpy as np
 from jax.scipy import special
 import numpy as onp
@@ -285,7 +284,6 @@ class SoftRank(_Differentiable):
         regularization="l2",
     ):
         self.values = np.asarray(values)
-        print("values shape pure", self.values.shape)
         self.input_w = np.arange(len(values))[::-1] + 1
         _check_direction(direction)
         sign = 1 if direction == "ASCENDING" else -1
@@ -440,19 +438,6 @@ def soft_rank(
     ).compute()
 
 
-soft_rank_l2 = lambda x, regularization_strength: np.array(
-    [
-        soft_rank(
-            i,
-            regularization="l2",
-            direction="ASCENDING",
-            regularization_strength=regularization_strength,
-        )
-        for i in x
-    ]
-)
-
-
 def soft_sort(
     values, direction="ASCENDING", regularization_strength=1.0, regularization="l2"
 ):
@@ -501,3 +486,23 @@ def rank(values, direction="ASCENDING"):
     if direction == "DESCENDING":
         permutation = permutation[::-1]
     return _inv_permutation(permutation) + 1  # We use 1-based indexing.
+
+
+def soft_rank_loss(actual_values, predicted_values, regularization_strength=1.0):
+    """Computes the rank loss between actual and predicted values.
+
+    Args:
+      actual_values: A 1d-array holding the actual values.
+      predicted_values: A 1d-array holding the predicted values.
+    Returns:
+      A scalar, the rank loss.
+    """
+    return np.sum(
+        (
+            rank(actual_values)
+            - soft_rank(
+                predicted_values, regularization_strength=regularization_strength
+            )
+        )
+        ** 2
+    )

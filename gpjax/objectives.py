@@ -21,7 +21,7 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-from gpjax.softrank import soft_rank
+from gpjax.softrank import soft_rank, soft_rank_loss
 
 tfd = tfp.distributions
 
@@ -153,6 +153,8 @@ class ConjugateRankLoss(AbstractObjective):
         Kxx = posterior.prior.kernel.gram(x)
         Kxx += identity(n) * posterior.prior.jitter
         Sigma = Kxx + identity(n) * obs_noise
+
+        # Kxx (Kxx + I*α)⁻¹y
         pred_y = Sigma @ Sigma.solve(y)
 
         # p(y | x, θ), where θ are the model hyperparameters:
@@ -161,15 +163,11 @@ class ConjugateRankLoss(AbstractObjective):
         ).squeeze()
 
         # p(y | x, θ), where θ are the model hyperparameters:
-        actual_rank = jnp.argsort(jnp.argsort(y.squeeze()))
-        predicted_rank = (
-            soft_rank(ucb.squeeze()[None, :], regularization_strength=1).squeeze() - 1.0
-        )
 
         # loss = rax.approx_t12n(rax.ndcg_metric)(ucb, y.squeeze())
         # mll = GaussianDistribution(jnp.atleast_1d(mx.squeeze()), Sigma)
         # mll_loss = -(mll.log_prob(jnp.atleast_1d(y.squeeze())).squeeze())
-        rank_loss = self.constant * jnp.sum((actual_rank - predicted_rank) ** 2)
+        rank_loss = self.constant * soft_rank_loss(y.squeeze(), ucb.squeeze(), 400.0)
 
         # assert False
         return rank_loss  # mll_loss
