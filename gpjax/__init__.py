@@ -69,8 +69,9 @@ from gpjax.variational_families import (
     WhitenedVariationalGaussian,
 )
 
-from . import rkhs
-from . import softrank
+from gpjax.krr import KRRjax, MSEObjective
+
+from . import rkhs, softrank, krr
 
 __license__ = "MIT"
 __description__ = "Didactic Gaussian processes in JAX"
@@ -124,4 +125,6 @@ __all__ = [
     "BasisFunctionComputation",
     "RFF",
     "reduce",
+    "KRRjax",
+    "MSEObjective",
 ]
