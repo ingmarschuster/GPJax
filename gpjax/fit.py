@@ -184,7 +184,10 @@ def get_batch(train_data: Dataset, batch_size: int, key: KeyArray) -> Dataset:
     # Subsample mini-batch indices with replacement.
     indices = jr.choice(key, n, (batch_size,), replace=True)
 
-    return Dataset(X=x[indices], y=y[indices])
+    if isinstance(x, dict):
+        return Dataset(X={k: v[indices] for k, v in x.items()}, y=y[indices])
+    else:
+        return Dataset(X=x[indices], y=y[indices])
 
 
 def _check_model(model: Any) -> None:

@@ -21,7 +21,7 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-from gpjax.softrank import soft_rank, soft_rank_loss
+from gpjax.softrank import soft_rank, soft_rank_loss, rank
 
 tfd = tfp.distributions
 
@@ -144,33 +144,34 @@ class ConjugateRankLoss(AbstractObjective):
         posterior: "gpjax.gps.ConjugatePosterior",  # noqa: F821
         train_data: Dataset,  # noqa: F821
     ) -> ScalarFloat:
-        x, y, n = train_data.X, train_data.y, train_data.n
+        train_n = train_data.n // 2
+        val_n = train_data.n - train_n
+        train_y = train_data.y[:train_n]
+        val_y = train_data.y[train_n:]
+        if not isinstance(train_data.X, dict):
+            train_x = train_data.X[:train_n]
+            val_x = train_data.X[train_n:]
+        else:
+            train_x = {k: v[:train_n] for k, v in train_data.X.items()}
+            val_x = {k: v[train_n:] for k, v in train_data.X.items()}
 
         # Observation noise o²
-        obs_noise = posterior.likelihood.obs_noise
-        mx = posterior.prior.mean_function(x)
+        noise = posterior.likelihood.obs_noise + posterior.prior.jitter
         # Σ = (Kxx + Io²) = LLᵀ
-        Kxx = posterior.prior.kernel.gram(x)
-        Kxx += identity(n) * posterior.prior.jitter
-        Sigma = Kxx + identity(n) * obs_noise
+        K_tt = posterior.prior.kernel.gram(train_x) + identity(train_n) * noise
+        K_vv = posterior.prior.kernel.gram(val_x) + identity(val_n) * noise
+        K_tv = posterior.prior.kernel.cross_covariance(train_x, val_x)
 
-        # Kxx (Kxx + I*α)⁻¹y
-        pred_y = Sigma @ Sigma.solve(y)
+        pred_val_y = K_tv.T @ K_tt.solve(
+            train_y
+        )  # pred_train_y = K_tt @ K_tt.solve(train_y)
+        pred_train_y = K_tv @ K_vv.solve(val_y)
 
-        # p(y | x, θ), where θ are the model hyperparameters:
-        ucb = (
-            pred_y.squeeze() + self.ucb_beta * jnp.sqrt(jnp.diag(Sigma.to_dense()))
-        ).squeeze()
-
-        # p(y | x, θ), where θ are the model hyperparameters:
-
-        # loss = rax.approx_t12n(rax.ndcg_metric)(ucb, y.squeeze())
-        # mll = GaussianDistribution(jnp.atleast_1d(mx.squeeze()), Sigma)
-        # mll_loss = -(mll.log_prob(jnp.atleast_1d(y.squeeze())).squeeze())
-        rank_loss = self.constant * soft_rank_loss(y.squeeze(), ucb.squeeze(), 400.0)
-
-        # assert False
-        return rank_loss  # mll_loss
+        # return (soft_rank_loss(pred_val_y.squeeze(), val_y.squeeze()) + soft_rank_loss(pred_train_y.squeeze(), train_y.squeeze()))
+        return -(
+            jnp.corrcoef(pred_val_y.squeeze(), rank(val_y.squeeze()))[0, 1]
+            + jnp.corrcoef(pred_train_y.squeeze(), rank(train_y.squeeze()))[0, 1]
+        )
 
 
 class LogPosteriorDensity(AbstractObjective):

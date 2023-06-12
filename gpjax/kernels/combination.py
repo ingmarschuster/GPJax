@@ -124,7 +124,7 @@ class Kmer1HotKernel(AbstractKernel):
 
     def __call__(self, x1: PyTree, x2: PyTree, **kwargs):
         return self.base_kernel(
-            self.lmap @ x1.reshape(self.lmap.shape[1], -1),
-            self.lmap @ x2.reshape(self.lmap.shape[1], -1),
+            (self.lmap @ x1.reshape(self.lmap.shape[1], -1)).flatten(),
+            (self.lmap @ x2.reshape(self.lmap.shape[1], -1)).flatten(),
             **kwargs,
         )

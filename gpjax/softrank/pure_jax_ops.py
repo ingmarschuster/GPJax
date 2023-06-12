@@ -488,20 +488,21 @@ def rank(values, direction="ASCENDING"):
     return _inv_permutation(permutation) + 1  # We use 1-based indexing.
 
 
-def soft_rank_loss(actual_values, predicted_values, regularization_strength=1.0):
+def soft_rank_loss(predicted_values, actual_values, regularization_strength=1.0):
     """Computes the rank loss between actual and predicted values.
 
     Args:
-      actual_values: A 1d-array holding the actual values.
       predicted_values: A 1d-array holding the predicted values.
+      actual_values: A 1d-array holding the actual values.
     Returns:
       A scalar, the rank loss.
     """
+    order = np.argsort(actual_values)
     return np.sum(
         (
-            rank(actual_values)
+            np.arange(1, len(predicted_values) + 1)
             - soft_rank(
-                predicted_values, regularization_strength=regularization_strength
+                predicted_values[order], regularization_strength=regularization_strength
             )
         )
         ** 2
