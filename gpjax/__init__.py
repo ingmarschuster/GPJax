@@ -71,7 +71,7 @@ from gpjax.variational_families import (
 
 from gpjax.krr import KRRjax, MSEObjective
 
-from . import rkhs, softrank, krr
+from . import rkhs, softrank, krr, rpcholesky
 
 __license__ = "MIT"
 __description__ = "Didactic Gaussian processes in JAX"

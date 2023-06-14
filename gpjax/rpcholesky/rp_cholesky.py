@@ -8,7 +8,7 @@ from .lra import PSDLowRank
 
 def cholesky_helper(A, k, alg):
     n = A.shape[0]
-    diags = np.diag(A)
+    diags = A.diag()
 
     # row ordering, is much faster for large scale problems
     F = np.zeros((k, n))
@@ -23,7 +23,7 @@ def cholesky_helper(A, k, alg):
         elif alg == "greedy":
             idx = random.choice(rng, np.where(diags == np.max(diags))[0], shape=())
         else:
-            raise RuntimeError("Algorithm '{}' not recognized".format(alg))
+            raise RuntimeError(f"Algorithm '{alg}' not recognized")
 
         arr_idx.append(idx)
         rows = rows.at[i, :].set(A[idx, :])
@@ -37,7 +37,7 @@ def cholesky_helper(A, k, alg):
 
 
 def block_cholesky_helper(A, k, b, alg):
-    diags = np.diag(A)
+    diags = A.diag()
     n = A.shape[0]
 
     # row ordering

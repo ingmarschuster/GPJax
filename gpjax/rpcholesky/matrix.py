@@ -4,18 +4,7 @@ import jax
 import jax.numpy as np
 from abc import ABC, abstractmethod
 import numbers
-from kernels import (
-    MaternKernel,
-    MaternKernel_vec,
-    MaternKernel_mtx,
-    GaussianKernel,
-    GaussianKernel_vec,
-    GaussianKernel_mtx,
-    LaplaceKernel,
-    LaplaceKernel_vec,
-    LaplaceKernel_mtx,
-)
-from ...kernels import AbstractKernel
+from ..kernels import AbstractKernel
 from functools import partial
 
 
@@ -104,7 +93,7 @@ class FunctionMatrix(AbstractPSDMatrix):
         if len(args) > 0:
             idx = list(args[0])
         else:
-            idx = range(self.shape[0])
+            idx = np.arange(self.shape[0], dtype=np.int32)
         return self._function_vec(idx, idx)
 
     def _getitem_helper(self, *args):
@@ -142,20 +131,14 @@ class FunctionMatrix(AbstractPSDMatrix):
 
 class KernelMatrix(FunctionMatrix):
     @staticmethod
-    def kernel_from_input(kernel, bandwidth=1.0, **kwargs):
-        if False:
-            return (
-                partial(LaplaceKernel, bandwidth=bandwidth),
-                partial(LaplaceKernel_vec, bandwidth=bandwidth),
-                partial(LaplaceKernel_mtx, bandwidth=bandwidth),
-            )
+    def kernel_from_input(kernel, **kwargs):
         return kernel, jax.vmap(kernel), kernel.cross_covariance
 
-    def __init__(self, X, kernel="gaussian", bandwidth=1.0, **kwargs):
+    def __init__(self, X, kernel="gaussian", **kwargs):
         super().__init__(X.shape[0], **kwargs)
         self.data = X
         kernel, kernel_vec, kernel_mtx = KernelMatrix.kernel_from_input(
-            kernel, bandwidth=bandwidth, **kwargs
+            kernel, **kwargs
         )
         self.kernel = kernel
         self.kernel_vec = kernel_vec
@@ -172,12 +155,12 @@ class KernelMatrix(FunctionMatrix):
 
 
 class NonsymmetricKernelMatrix(object):
-    def __init__(self, X, Y, kernel="gaussian", bandwidth=1.0, **kwargs):
+    def __init__(self, X, Y, kernel="gaussian", **kwargs):
         self.X = X
         self.Y = Y
         self.shape = (X.shape[0], Y.shape[0])
         self.kernel, self.kernel_vec, self.kernel_mtx = KernelMatrix.kernel_from_input(
-            kernel, bandwidth=bandwidth, **kwargs
+            kernel, **kwargs
         )
 
     def _function(self, i, j):
