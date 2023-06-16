@@ -8,7 +8,7 @@ from .lra import PSDLowRank
 
 def cholesky_helper(A, k, alg):
     n = A.shape[0]
-    diags = A.diag()
+    diags = np.clip(A.diag(), a_min=0.0)
 
     # row ordering, is much faster for large scale problems
     F = np.zeros((k, n))
@@ -31,13 +31,15 @@ def cholesky_helper(A, k, alg):
             (rows[i, :] - np.dot(F[:i, idx].T, F[:i, :])) / np.sqrt(diags[idx])
         )
         diags = diags - F[i, :] ** 2
+        # make sure we don't pick the same index twice
+        diags = diags.at[idx].set(0.0)
         diags = np.clip(diags, a_min=0)
 
     return PSDLowRank(F.T, idx=arr_idx, rows=rows)
 
 
 def block_cholesky_helper(A, k, b, alg):
-    diags = A.diag()
+    diags = np.clip(A.diag(), a_min=0.0)
     n = A.shape[0]
 
     # row ordering
@@ -78,6 +80,8 @@ def block_cholesky_helper(A, k, b, alg):
             np.linalg.solve(L, F[cols : cols + block_size, :])
         )
         diags = diags - np.sum(F[cols : cols + block_size, :] ** 2, axis=0)
+        # make sure we don't pick the same index twice
+        diags = diags.at[idx].set(0.0)
         diags = np.clip(diags, a_min=0)
 
         cols += block_size
@@ -86,6 +90,7 @@ def block_cholesky_helper(A, k, b, alg):
 
 
 def rp_cholesky(A, k):
+    # TODO: add support for starting from a uniform random sample
     return cholesky_helper(A, k, "rp")
 
 
