@@ -217,7 +217,10 @@ class TileView(LinearizableReduce):
         Returns:
             int: Length of the array after reduction.
         """
-        return self.result_len
+        if self.result_len is not None:
+            return self.result_len
+        else:
+            return original_len * self.tile_times
 
 
 @dataclass

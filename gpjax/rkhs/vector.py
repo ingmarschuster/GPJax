@@ -53,6 +53,9 @@ class RkhsVec(AbstractRkhsVec):
 
     @property
     def size(self):
+        return self.__len__()
+
+    def __len__(self):
         return self.reduce.new_len(len(self.insp_pts))
 
     def outer_inner(self, other: "RkhsVec") -> Float[Array, "N M"]:
@@ -118,6 +121,9 @@ class CombinationVec(AbstractRkhsVec):
 
     @property
     def size(self):
+        return self.__size
+
+    def __len__(self):
         return self.__size
 
     def outer_inner(self, other: "CombinationVec") -> Float[Array, "N M"]:
