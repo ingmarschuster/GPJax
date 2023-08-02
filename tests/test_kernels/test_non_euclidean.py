@@ -14,8 +14,9 @@ from jax.config import config
 import jax.numpy as jnp
 import networkx as nx
 
-from gpjax.kernels.non_euclidean import GraphKernel
+from gpjax.kernels.non_euclidean import GraphKernel, DictKernel
 from gpjax.linops import identity
+import jax.random as jr
 
 # # Enable Float64 for more stable matrix inversions.
 config.update("jax_enable_x64", True)
@@ -46,3 +47,17 @@ def test_graph_kernel():
     Kxx += identity(n_verticies) * 1e-6
     eigen_values = jnp.linalg.eigvalsh(Kxx.to_dense())
     assert all(eigen_values > 0)
+
+
+def test_dict_kernel():
+    x = jr.normal(jr.PRNGKey(123), (5000, 3))
+    gram = jnp.cov(x.T)
+    params = DictKernel.gram_to_sdev_cholesky_lower(gram)
+    dk = DictKernel(
+        inspace_vals=list(range(len(gram))),
+        sdev=params.sdev,
+        cholesky_lower=params.cholesky_lower,
+    )
+    print(dk.gram, gram)
+    assert jnp.allclose(dk.gram, gram)
+    assert False
