@@ -13,8 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
+# from __future__ import annotations
 from abc import abstractmethod
 from dataclasses import dataclass
+from typing import overload
 
 from beartype.typing import (
     Any,
@@ -44,6 +46,7 @@ from gpjax.kernels.base import AbstractKernel
 from gpjax.likelihoods import (
     AbstractLikelihood,
     Gaussian,
+    NonGaussianLikelihood,
 )
 from gpjax.linops import identity
 from gpjax.mean_functions import AbstractMeanFunction
@@ -56,7 +59,7 @@ from gpjax.typing import (
 
 @dataclass
 class AbstractPrior(Module):
-    """Abstract Gaussian process prior."""
+    r"""Abstract Gaussian process prior."""
 
     kernel: AbstractKernel
     mean_function: AbstractMeanFunction
@@ -121,9 +124,7 @@ class Prior(AbstractPrior):
     function $`k(\cdot, \cdot)`$ is given by
     $`p(f(\cdot)) = \mathcal{GP}(m(\cdot), k(\cdot, \cdot))`$.
 
-    To invoke a `Prior` distribution, only a kernel function is required. By
-    default, the mean function will be set to zero. In general, this assumption
-    will be reasonable assuming the data being modelled has been centred.
+    To invoke a `Prior` distribution, a kernel and mean function must be specified.
 
     Example:
     ```python
@@ -135,7 +136,19 @@ class Prior(AbstractPrior):
     ```
     """
 
-    def __mul__(self, other: AbstractLikelihood):
+    @overload
+    def __mul__(self, other: Gaussian) -> "ConjugatePosterior":
+        ...
+
+    @overload
+    def __mul__(self, other: NonGaussianLikelihood) -> "NonConjugatePosterior":
+        ...
+
+    @overload
+    def __mul__(self, other: AbstractLikelihood) -> "AbstractPosterior":
+        ...
+
+    def __mul__(self, other):
         r"""Combine the prior with a likelihood to form a posterior distribution.
 
         The product of a prior and likelihood is proportional to the posterior
@@ -169,7 +182,19 @@ class Prior(AbstractPrior):
         """
         return construct_posterior(prior=self, likelihood=other)
 
-    def __rmul__(self, other: AbstractLikelihood):
+    @overload
+    def __rmul__(self, other: Gaussian) -> "ConjugatePosterior":
+        ...
+
+    @overload
+    def __rmul__(self, other: NonGaussianLikelihood) -> "NonConjugatePosterior":
+        ...
+
+    @overload
+    def __rmul__(self, other: AbstractLikelihood) -> "AbstractPosterior":
+        ...
+
+    def __rmul__(self, other):
         r"""Combine the prior with a likelihood to form a posterior distribution.
 
         Reimplement the multiplication operator to allow for order-invariant
@@ -655,9 +680,28 @@ class NonConjugatePosterior(AbstractPosterior):
 #######################
 # Utils
 #######################
+
+
+@overload
+def construct_posterior(prior: Prior, likelihood: Gaussian) -> ConjugatePosterior:
+    ...
+
+
+@overload
+def construct_posterior(
+    prior: Prior, likelihood: NonGaussianLikelihood
+) -> NonConjugatePosterior:
+    ...
+
+
+@overload
 def construct_posterior(
     prior: Prior, likelihood: AbstractLikelihood
 ) -> AbstractPosterior:
+    ...
+
+
+def construct_posterior(prior, likelihood):
     r"""Utility function for constructing a posterior object from a prior and
     likelihood. The function will automatically select the correct posterior
     object based on the likelihood.
@@ -682,7 +726,7 @@ def construct_posterior(
 def _build_fourier_features_fn(
     prior: Prior, num_features: int, key: KeyArray
 ) -> Callable[[Float[Array, "N D"]], Float[Array, "N L"]]:
-    """Return a function that evaluates features sampled from the Fourier feature
+    r"""Return a function that evaluates features sampled from the Fourier feature
     decomposition of the prior's kernel.
 
     Args:
