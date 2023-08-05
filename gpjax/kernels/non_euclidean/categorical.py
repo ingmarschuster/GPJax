@@ -42,17 +42,18 @@ from gpjax.typing import (
 
 tfb = tfp.bijectors
 
-DictKernelParams = NamedTuple(
+CatKernelParams = NamedTuple(
     "DictKernelParams",
     [("sdev", Float[Array, "N 1"]), ("cholesky_lower", Float[Array, "N*(N-1)//2"])],
 )
 
 
 @dataclass
-class DictKernel(AbstractKernel):
-    r"""The Dictionary kernel is defined for a fixed number of values.
+class CatKernel(AbstractKernel):
+    r"""The categorical kernel is defined for a fixed number of values of categorical input.
 
-    It stores an explicit gram matrix and returns the corresponding values when called.
+    It stores a standard dev for each input value (i.e. the diagonal of the gram), and a lower cholesky factor for correlations.
+    It returns the corresponding values from an the gram matrix when called.
 
     Args:
         sdev (Float[Array, "N"]): The standard deviation parameters, one for each input space value.
@@ -69,15 +70,18 @@ class DictKernel(AbstractKernel):
     )
     inspace_vals: list = static_field(None)
     name: str = "Dictionary Kernel"
+    input_1hot: bool = static_field(False)
 
     def __post_init__(self):
         if self.inspace_vals is not None and len(self.inspace_vals) != len(self.sdev):
             raise ValueError(
                 f"The number of sdev parameters ({len(self.sdev)}) has to match the number of input space values ({len(self.inspace_vals)}), unless inspace_vals is None."
             )
-        L = self.sdev.reshape(-1, 1) * self.cholesky_lower
 
-        self.explicit_gram = L @ L.T
+    @property
+    def explicit_gram(self):
+        L = self.sdev.reshape(-1, 1) * self.cholesky_lower
+        return L @ L.T
 
     def __call__(  # TODO not consistent with general kernel interface
         self,
@@ -99,7 +103,10 @@ class DictKernel(AbstractKernel):
             y = y.squeeze()
         except AttributeError:
             pass
-        return self.explicit_gram[x, y]
+        if self.input_1hot:
+            return self.explicit_gram[jnp.outer(x, y) == 1.0]
+        else:
+            return self.explicit_gram[x, y]
 
     @classmethod
     def num_cholesky_lower_params(cls, num_inspace_vals: ScalarInt) -> ScalarInt:
@@ -114,7 +121,7 @@ class DictKernel(AbstractKernel):
         return num_inspace_vals * (num_inspace_vals - 1) // 2
 
     @classmethod
-    def gram_to_sdev_cholesky_lower(cls, gram: Float[Array, "N N"]) -> DictKernelParams:
+    def gram_to_sdev_cholesky_lower(cls, gram: Float[Array, "N N"]) -> CatKernelParams:
         """Compute the standard deviation and lower triangular Cholesky factor of the gram matrix.
 
         Args:
@@ -125,4 +132,4 @@ class DictKernel(AbstractKernel):
         """
         sdev = jnp.sqrt(jnp.diag(gram))
         L = jnp.linalg.cholesky(gram) / sdev.reshape(-1, 1)
-        return DictKernelParams(sdev, L)
+        return CatKernelParams(sdev, L)

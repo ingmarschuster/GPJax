@@ -37,6 +37,7 @@ class Dataset(Pytree):
 
     X: Optional[Num[Array, "N D"]] = None
     y: Optional[Num[Array, "N Q"]] = None
+    observed: Optional[Num[Array, "N Q"]] = None
 
     def __post_init__(self) -> None:
         r"""Checks that the shapes of $`X`$ and $`y`$ are compatible."""

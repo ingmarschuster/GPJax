@@ -46,6 +46,26 @@ class PoweredExponential(AbstractKernel):
     power: ScalarFloat = param_field(jnp.array(1.0), bijector=tfb.Sigmoid())
     name: str = "Powered Exponential"
 
+    def rbf(self, dist: Float[Array, "N M"]) -> ScalarFloat:
+        r"""Compute the Powered Exponential kernel between a pair of arrays.
+
+        Evaluate the kernel on a pair of inputs $`(x, y)`$ with length-scale parameter
+        $`\ell`$, $`\sigma`$ and power $`\kappa`$.
+        ```math
+        k(x, y)=\sigma^2\exp\Bigg(-\Big(\frac{\lVert x-y\rVert^2}{\ell^2}\Big)^\kappa\Bigg)
+        ```
+
+        Args:
+            x (Float[Array, " D"]): The left hand argument of the kernel function's call.
+            y (Float[Array, " D"]): The right hand argument of the kernel function's call
+
+        Returns
+        -------
+            ScalarFloat: The value of $`k(x, y)`$.
+        """
+        K = self.variance * jnp.exp(-(dist**self.power) / self.lengthscale**2)
+        return K
+
     def __call__(self, x: Float[Array, " D"], y: Float[Array, " D"]) -> ScalarFloat:
         r"""Compute the Powered Exponential kernel between a pair of arrays.
 
@@ -65,5 +85,4 @@ class PoweredExponential(AbstractKernel):
         """
         x = self.slice_input(x) / self.lengthscale
         y = self.slice_input(y) / self.lengthscale
-        K = self.variance * jnp.exp(-euclidean_distance(x, y) ** self.power)
-        return K.squeeze()
+        return self.rbf(euclidean_distance(x, y)).squeeze()

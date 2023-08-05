@@ -39,6 +39,27 @@ from gpjax.typing import (
 
 ModuleModel = TypeVar("ModuleModel", bound=Module)
 
+import jaxopt as jo
+import jaxopt.base
+
+
+def jaxopt_objective(
+    objective: Callable[[Module, Dataset], ScalarFloat]
+) -> Callable[[Module, Dataset], ScalarFloat]:
+    return lambda current_model, task: objective(
+        current_model.stop_gradient().constrain(), task
+    )
+
+
+def fit_jaxopt(  # noqa: PLR0913
+    *,
+    model: Module,
+    train_data: Dataset,
+    solver: Callable[[], jaxopt.base.IterativeSolver],
+):
+    optim_model, optstep = solver.run(model.unconstrain(), train_data)
+    return optim_model.constrain(), optstep
+
 
 def fit(  # noqa: PLR0913
     *,
@@ -131,7 +152,7 @@ def fit(  # noqa: PLR0913
     # Unconstrained space loss function with stop-gradient rule for non-trainable params.
     def loss(model: Module, batch: Dataset) -> ScalarFloat:
         model = model.stop_gradient()
-        return objective(model.constrain(), batch)
+        return objective(model.stop_gradient().constrain(), batch)
 
     # Unconstrained space model.
     model = model.unconstrain()
@@ -151,9 +172,12 @@ def fit(  # noqa: PLR0913
         else:
             batch = train_data
 
-        loss_val, loss_gradient = jax.value_and_grad(loss)(model, batch)
+        loss_val, loss_gradient = jax.value_and_grad(
+            lambda x: objective(x.stop_gradient().constrain(), batch)
+        )(model)
         updates, opt_state = optim.update(loss_gradient, opt_state, model)
         model = ox.apply_updates(model, updates)
+        # assert False
 
         carry = model, opt_state
         return carry, loss_val

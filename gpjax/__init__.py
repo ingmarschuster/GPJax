@@ -19,7 +19,7 @@ from gpjax.base import (
 )
 from gpjax.citation import cite
 from gpjax.dataset import Dataset
-from gpjax.fit import fit
+from gpjax.fit import fit, fit_jaxopt, jaxopt_objective
 from gpjax.gps import (
     Prior,
     construct_posterior,
@@ -72,7 +72,18 @@ from gpjax.variational_families import (
 )
 
 from gpjax.krr import KRRjax, MSEObjective
-
+from gpjax.krr_ind import (
+    KRRind,
+    MSEObjectiveIgnoreNan,
+    RankObjectiveIgnoreNan,
+    RidgeRegression,
+    InducingPoints,
+    AbstractInducingPoints,
+    PositionwiseInducing,
+    MultiPositionwiseInducing,
+    PosEmbInducing,
+    MultiPosEmbInducing,
+)
 from . import rkhs, softrank, krr, rpcholesky
 
 __license__ = "MIT"
@@ -87,6 +98,8 @@ __all__ = [
     "cite",
     "kernels",
     "fit",
+    "fit_jaxopt",
+    "jaxopt_objective",
     "Prior",
     "construct_posterior",
     "integrators",
@@ -130,5 +143,14 @@ __all__ = [
     "RFF",
     "reduce",
     "KRRjax",
+    "RidgeRegression",
+    "InducingPoints",
+    "PositionwiseInducing",
+    "AbstractInducingPoints",
     "MSEObjective",
+    "MultiPositionwiseInducing",
+    "PosEmbInducing",
+    "MultiPosEmbInducing",
+    "MSEObjectiveIgnoreNan",
+    "RankObjectiveIgnoreNan",
 ]

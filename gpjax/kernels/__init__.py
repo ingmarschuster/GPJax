@@ -27,7 +27,7 @@ from gpjax.kernels.computations import (
     DiagonalKernelComputation,
     EigenKernelComputation,
 )
-from gpjax.kernels.non_euclidean import GraphKernel, DictKernel
+from gpjax.kernels.non_euclidean import GraphKernel, CatKernel
 from gpjax.kernels.nonstationary import (
     ArcCosine,
     Linear,
@@ -76,7 +76,7 @@ __all__ = [
     "White",
     "BasisFunctionComputation",
     "RFF",
-    "DictKernel",
+    "CatKernel",
     "EncoderKernel",
     "LinearmapKernel",
     "FeatmapKernel",
