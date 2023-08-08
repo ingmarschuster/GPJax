@@ -4,6 +4,8 @@ import jax
 import jax.numpy as np
 from abc import ABC, abstractmethod
 
+# Low Rank Approximations (LRA) for positive semidefinite matrices
+
 
 class AbstractPSDLowRank(ABC):
     def __init__(self, **kwargs):
@@ -98,41 +100,3 @@ class PSDLowRank(AbstractPSDLowRank):
 
     def scale(self, scaling):
         return PSDLowRank(scaling[:, np.newaxis] * self.F, idx=self.idx)
-
-
-class NystromExtension(AbstractPSDLowRank):
-    def __init__(self, F, C, factor=None, **kwargs):
-        super().__init__(**kwargs)
-        self.F = F
-        self.C = (C + C.T) / 2
-        self.shape = (self.F[0], self.F[0])
-        self.factor = factor
-
-    def get_factor(self):
-        if self.factor is None:
-            L = np.linalg.cholesky(
-                self.C
-                + 100 * self.C.max() * np.finfo(float).eps * np.eye(self.C.shape[0])
-            )
-            self.factor = np.linalg.solve(L, self.F.T).T
-        return self.factor
-
-    def trace(self):
-        return np.linalg.norm(self.get_factor()) ** 2
-
-    def __matmul__(self, other):
-        return self.F @ np.linalg.solve(self.C, self.F.T @ other)
-
-    def rank(self):
-        return self.C.shape[0]
-
-    def matrix(self):
-        return self.F @ np.linalg.solve(self.C, self.F.T)
-
-    def eigenvalue_decomposition(self):
-        return CompactEigenvalueDecomposition.from_F(
-            self.get_factor(), idx=self.idx, rows=self.rows
-        )
-
-    def scale(self, scaling):
-        return NystromExtension(scaling[:, np.newaxis] * self.F, self.C, idx=self.idx)

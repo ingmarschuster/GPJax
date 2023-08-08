@@ -8,7 +8,20 @@ from ..kernels import AbstractKernel
 from functools import partial
 
 
+# symmetric matrices need to provide diag and trace
+# _diag_helper and _getitem_helper are used to count queries and evaluate the matrix
+# these use _function, _function_vec, _function_mtx to evaluate the matrix in different ways
+# corresponding to kernel (_function), jax.vmap(kernel) (_function_vec), kernel.cross_covariance (_function_mtx)
+
+
 class AbstractPSDMatrix(ABC):
+    """Abstract class for positive semidefinite matrices.
+
+    Attributes:
+        queries (int): Counter for the number of queries made to the matrix.
+        count_queries (bool): Flag to control whether to count queries.
+    """
+
     def __init__(self, **kwargs):
         self.queries = 0
         self.count_queries = (
