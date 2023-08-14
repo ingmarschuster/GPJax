@@ -15,7 +15,7 @@
 
 # from __future__ import annotations
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import overload
 
 from beartype.typing import (
@@ -40,14 +40,14 @@ from gpjax.base import (
 )
 from gpjax.dataset import Dataset
 from gpjax.gaussian_distribution import GaussianDistribution
-from gpjax.kernels import RFF
+from gpjax.kernels import RFF, White
 from gpjax.kernels.base import AbstractKernel
 from gpjax.likelihoods import (
     AbstractLikelihood,
     Gaussian,
     NonGaussianLikelihood,
 )
-from gpjax.linops import identity
+from gpjax.linops import identity, DenseLinearOperator
 from gpjax.mean_functions import AbstractMeanFunction
 from gpjax.typing import (
     Array,
@@ -63,6 +63,11 @@ class AbstractPrior(Module):
     kernel: AbstractKernel
     mean_function: AbstractMeanFunction
     jitter: float = static_field(1e-6)
+
+    # TODO: when letting kernels be responsible for certain features, like
+    # RBF(features=["outp_idx"]), this can be folded into the kernel,
+    # just not sure how to ensure Kronecker structure then
+    out_kernel: AbstractKernel = field(default_factory=White)
 
     def __call__(self, *args: Any, **kwargs: Any) -> GaussianDistribution:
         r"""Evaluate the Gaussian process at the given points.
@@ -477,19 +482,22 @@ class ConjugatePosterior(AbstractPosterior):
         """
         # Unpack training data
         x, y, n, mask = train_data.X, train_data.y, train_data.n, train_data.mask
-
+        m = y.shape[1]
+        if m > 1 and mask is not None:
+            mask = mask.flatten()
+        n_X_m = n * m
         # Unpack test inputs
         t, n_test = test_inputs, test_inputs.shape[0]
 
         # Observation noise o²
         obs_noise = self.likelihood.obs_noise
-        mx = self.prior.mean_function(x)
+        mx = jnp.repeat(self.prior.mean_function(x), m, axis=0)
 
         # Precompute Gram matrix, Kxx, at training inputs, x
-        Kxx = self.prior.kernel.gram(x) + (identity(n) * self.prior.jitter)
-
-        # Σ = Kxx + Io²
-        Sigma = Kxx + identity(n) * obs_noise
+        Kxx = self.prior.kernel.gram(x)
+        Kyy = self.prior.out_kernel.gram(jnp.arange(m))
+        Sigma = DenseLinearOperator(jnp.kron(Kxx.to_dense(), Kyy.to_dense()))
+        Sigma += identity(n_X_m) * (self.prior.jitter + obs_noise)
 
         if mask is not None:
             y = jnp.where(mask, 0.0, y)
@@ -501,9 +509,10 @@ class ConjugatePosterior(AbstractPosterior):
                 )
             )
 
-        mean_t = self.prior.mean_function(t)
-        Ktt = self.prior.kernel.gram(t)
-        Kxt = self.prior.kernel.cross_covariance(x, t)
+        # FIXME: mean_function should probably be multidim
+        mean_t = jnp.repeat(self.prior.mean_function(t), m, axis=0)
+        Ktt = jnp.kron(self.prior.kernel.gram(t).to_dense(), Kyy.to_dense())
+        Kxt = jnp.kron(self.prior.kernel.cross_covariance(x, t), Kyy.to_dense())
 
         # Σ⁻¹ Kxt
         if mask is not None:
@@ -511,11 +520,11 @@ class ConjugatePosterior(AbstractPosterior):
         Sigma_inv_Kxt = Sigma.solve(Kxt)
 
         # μt  +  Ktx (Kxx + Io²)⁻¹ (y  -  μx)
-        mean = mean_t + jnp.matmul(Sigma_inv_Kxt.T, y - mx)
+        mean = mean_t + jnp.matmul(Sigma_inv_Kxt.T, y.reshape((-1, 1)) - mx)
 
         # Ktt  -  Ktx (Kxx + Io²)⁻¹ Kxt, TODO: Take advantage of covariance structure to compute Schur complement more efficiently.
         covariance = Ktt - jnp.matmul(Kxt.T, Sigma_inv_Kxt)
-        covariance += identity(n_test) * self.prior.jitter
+        covariance += identity(n_test * m) * self.prior.jitter
 
         return GaussianDistribution(jnp.atleast_1d(mean.squeeze()), covariance)
 
