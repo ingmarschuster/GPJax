@@ -23,7 +23,7 @@ import pytest
 # Enable Float64 for more stable matrix inversions.
 config.update("jax_enable_x64", True)
 
-from gpjax.gaussian_distribution import GaussianDistribution
+from gpjax.distributions import GaussianDistribution
 from gpjax.linops.dense_linear_operator import DenseLinearOperator
 from gpjax.linops.diagonal_linear_operator import DiagonalLinearOperator
 
