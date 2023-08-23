@@ -249,7 +249,7 @@ class Prior(AbstractPrior):
         mx = jnp.atleast_1d(self.mean_function(x))
         Kxx = self.kernel.gram(x)
 
-        Kyy = self.out_kernel.gram(jnp.arange(mx.shape[1]))
+        Kyy = self.out_kernel.gram(jnp.arange(mx.shape[1])[:, jnp.newaxis])
         Sigma = DenseLinearOperator(jnp.kron(Kxx.to_dense(), Kyy.to_dense()))
         Sigma += identity(mx.size) * self.jitter
 
@@ -502,7 +502,7 @@ class ConjugatePosterior(AbstractPosterior):
 
         # Precompute Gram matrix, Kxx, at training inputs, x
         Kxx = self.prior.kernel.gram(x)
-        Kyy = self.prior.out_kernel.gram(jnp.arange(m))
+        Kyy = self.prior.out_kernel.gram(jnp.arange(m)[:, jnp.newaxis])
         Sigma = DenseLinearOperator(jnp.kron(Kxx.to_dense(), Kyy.to_dense()))
         Sigma += identity(n_X_m) * (self.prior.jitter + obs_noise)
 

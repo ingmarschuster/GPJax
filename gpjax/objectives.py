@@ -129,7 +129,7 @@ class ConjugateMLL(AbstractObjective):
 
         # Σ = (Kxx + Io²) = LLᵀ
         Kxx = posterior.prior.kernel.gram(x)
-        Kyy = posterior.prior.out_kernel.gram(jnp.arange(m))
+        Kyy = posterior.prior.out_kernel.gram(jnp.arange(m)[:, jnp.newaxis])
         Sigma = DenseLinearOperator(jnp.kron(Kxx.to_dense(), Kyy.to_dense()))
 
         Sigma += identity(n_X_m) * (posterior.prior.jitter + obs_noise)
