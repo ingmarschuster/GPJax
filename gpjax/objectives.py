@@ -13,12 +13,13 @@ from gpjax.base import (
     static_field,
 )
 from gpjax.dataset import Dataset
-from gpjax.gaussian_distribution import GaussianDistribution
-from gpjax.linops import identity
+from gpjax.distributions import GaussianDistribution
+from gpjax.linops import identity, DenseLinearOperator
 from gpjax.typing import (
     Array,
     ScalarFloat,
 )
+
 
 from gpjax.softrank import soft_rank, soft_rank_loss, rank
 
@@ -117,21 +118,30 @@ class ConjugateMLL(AbstractObjective):
             ScalarFloat: The marginal log-likelihood of the Gaussian process for the
                 current parameter set.
         """
-        x, y, n = train_data.X, train_data.y, train_data.n
+        x, y, n, mask = train_data.X, train_data.y, train_data.n, train_data.mask
+        m = y.shape[1]
+        if m > 1 and mask is not None:
+            mask = mask.flatten()
+        n_X_m = n * m
 
         # Observation noise o²
         obs_noise = posterior.likelihood.obs_noise
+
         mx = posterior.prior.mean_function(x)
 
         # Σ = (Kxx + Io²) = LLᵀ
         Kxx = posterior.prior.kernel.gram(x)
-        Kxx += identity(n) * posterior.prior.jitter
-        Sigma = Kxx + identity(n) * obs_noise
+        Kyy = posterior.prior.out_kernel.gram(jnp.arange(m)[:, jnp.newaxis])
+        Sigma = DenseLinearOperator(jnp.kron(Kxx.to_dense(), Kyy.to_dense()))
 
+        Sigma += identity(n_X_m) * (posterior.prior.jitter + obs_noise)
+
+        # flatten to handle multi-output case, then calculate
         # p(y | x, θ), where θ are the model hyperparameters:
-        mll = GaussianDistribution(jnp.atleast_1d(mx.squeeze()), Sigma)
+        mll = GaussianDistribution(jnp.atleast_1d(mx.flatten()), Sigma)
 
-        return self.constant * (mll.log_prob(jnp.atleast_1d(y.squeeze())).squeeze())
+        rval = mll.log_prob(jnp.atleast_1d(y.flatten()), mask=mask).squeeze()
+        return self.constant * rval
 
 
 @dataclass

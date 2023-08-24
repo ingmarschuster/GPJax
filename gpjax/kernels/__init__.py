@@ -59,6 +59,7 @@ __all__ = [
     "ArcCosine",
     "RBF",
     "GraphKernel",
+    "CatKernel",
     "Matern12",
     "Matern32",
     "Matern52",
