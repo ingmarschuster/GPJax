@@ -56,6 +56,7 @@ def test_cat_kernel():
     dk = CatKernel(
         inspace_vals=list(range(len(gram))),
         stddev=params.stddev,
+
         cholesky_lower=params.cholesky_lower,
     )
     assert jnp.allclose(dk.explicit_gram, gram)
@@ -71,16 +72,19 @@ def test_cat_kernel():
 
     assert dict_kernel.stddev.shape == sdev.shape
     assert jnp.allclose(dict_kernel.stddev, sdev)
+
     assert jnp.allclose(dict_kernel.cholesky_lower, cholesky_lower)
     assert dict_kernel.inspace_vals == inspace_vals
 
 
 def test_cat_kernel_gram_to_stddev_cholesky_lower():
+
     gram = jnp.array([[1.0, 0.5], [0.5, 1.0]])
     sdev_expected = jnp.array([1.0, 1.0])
     cholesky_lower_expected = jnp.array([[1.0, 0.0], [0.5, 0.8660254]])
 
     # Compute sdev and cholesky_lower from gram
+
     sdev, cholesky_lower = CatKernel.gram_to_stddev_cholesky_lower(gram)
 
     assert jnp.allclose(sdev, sdev_expected)
@@ -95,6 +99,7 @@ def test_cat_kernel_call():
     # Initialize CatKernel object
     dict_kernel = CatKernel(
         stddev=sdev, cholesky_lower=cholesky_lower, inspace_vals=inspace_vals
+
     )
 
     # Compute kernel value for pair of inputs
@@ -111,6 +116,7 @@ def test_cat_kernel_explicit_gram():
     # Initialize CatKernel object
     dict_kernel = CatKernel(
         stddev=sdev, cholesky_lower=cholesky_lower, inspace_vals=inspace_vals
+
     )
 
     # Compute explicit gram matrix

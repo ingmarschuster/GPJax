@@ -44,6 +44,16 @@ from gpjax.kernels.stationary import (
     White,
 )
 
+from .combination import (
+    LinearmapKernel,
+    ConvexcombinationKernel,
+    FeatmapKernel,
+    AdapterKernel,
+    Kmer1HotKernel,
+)
+
+from .encoderbased import EncoderKernel
+
 __all__ = [
     "AbstractKernel",
     "ArcCosine",
@@ -67,4 +77,11 @@ __all__ = [
     "White",
     "BasisFunctionComputation",
     "RFF",
+    "CatKernel",
+    "EncoderKernel",
+    "LinearmapKernel",
+    "FeatmapKernel",
+    "ConvexcombinationKernel",
+    "AdapterKernel",
+    "Kmer1HotKernel",
 ]

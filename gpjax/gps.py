@@ -23,6 +23,7 @@ from beartype.typing import (
     Callable,
     Optional,
 )
+import jax
 import jax.numpy as jnp
 from jax.random import (
     PRNGKey,
@@ -494,7 +495,7 @@ class ConjugatePosterior(AbstractPosterior):
             mask = mask.flatten()
         n_X_m = n * m
         # Unpack test inputs
-        t, n_test = test_inputs, test_inputs.shape[0]
+        t, n_test = test_inputs, jax.tree_util.tree_leaves(test_inputs)[0].shape[0]
 
         # Observation noise o²
         obs_noise = self.likelihood.obs_noise
@@ -684,7 +685,7 @@ class NonConjugatePosterior(AbstractPosterior):
         Lx = Kxx.to_root()
 
         # Unpack test inputs
-        t, n_test = test_inputs, test_inputs.shape[0]
+        t, n_test = test_inputs, jax.tree_util.tree_leaves(test_inputs)[0].shape[0]
 
         # Compute terms of the posterior predictive distribution
         Ktx = kernel.cross_covariance(t, x)

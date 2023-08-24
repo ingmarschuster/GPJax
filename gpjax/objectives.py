@@ -21,6 +21,8 @@ from gpjax.typing import (
 )
 
 
+from gpjax.softrank import soft_rank, soft_rank_loss, rank
+
 tfd = tfp.distributions
 
 
@@ -140,6 +142,45 @@ class ConjugateMLL(AbstractObjective):
 
         rval = mll.log_prob(jnp.atleast_1d(y.flatten()), mask=mask).squeeze()
         return self.constant * rval
+
+
+@dataclass
+class ConjugateRankLoss(AbstractObjective):
+    ucb_beta: float = static_field(0.0)
+
+    def step(
+        self,
+        posterior: "gpjax.gps.ConjugatePosterior",  # noqa: F821
+        train_data: Dataset,  # noqa: F821
+    ) -> ScalarFloat:
+        train_n = train_data.n // 2
+        val_n = train_data.n - train_n
+        train_y = train_data.y[:train_n]
+        val_y = train_data.y[train_n:]
+        if not isinstance(train_data.X, dict):
+            train_x = train_data.X[:train_n]
+            val_x = train_data.X[train_n:]
+        else:
+            train_x = {k: v[:train_n] for k, v in train_data.X.items()}
+            val_x = {k: v[train_n:] for k, v in train_data.X.items()}
+
+        # Observation noise o²
+        noise = posterior.likelihood.obs_noise + posterior.prior.jitter
+        # Σ = (Kxx + Io²) = LLᵀ
+        K_tt = posterior.prior.kernel.gram(train_x) + identity(train_n) * noise
+        K_vv = posterior.prior.kernel.gram(val_x) + identity(val_n) * noise
+        K_tv = posterior.prior.kernel.cross_covariance(train_x, val_x)
+
+        pred_val_y = K_tv.T @ K_tt.solve(
+            train_y
+        )  # pred_train_y = K_tt @ K_tt.solve(train_y)
+        pred_train_y = K_tv @ K_vv.solve(val_y)
+
+        # return (soft_rank_loss(pred_val_y.squeeze(), val_y.squeeze()) + soft_rank_loss(pred_train_y.squeeze(), train_y.squeeze()))
+        return -(
+            jnp.corrcoef(pred_val_y.squeeze(), rank(val_y.squeeze()))[0, 1]
+            + jnp.corrcoef(pred_train_y.squeeze(), rank(train_y.squeeze()))[0, 1]
+        )
 
 
 class LogPosteriorDensity(AbstractObjective):
