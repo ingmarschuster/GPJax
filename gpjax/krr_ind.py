@@ -71,7 +71,7 @@ class AaEnc(AbstractEncoder):
 
     aa_dict_k: AbstractKernel = param_field(
         CatKernel(
-            sdev=np.ones(1),
+            stddev=np.ones(1),
             cholesky_lower=(np.tril(np.ones(2 * [1])) + np.eye(1)) / 2,
         )
     )
@@ -84,10 +84,10 @@ class AaEnc(AbstractEncoder):
 
     def __post_init__(self):
         a, b = ped.load_similarity("aa", "BLOSUM62")
-        # init_p = DictKernel.gram_to_sdev_cholesky_lower(b @ b.T)
+        # init_p = CatKernel.gram_to_stddev_cholesky_lower(b @ b.T)
         init_p = CatKernel.gram_to_sdev_cholesky_lower(b + np.eye(len(b)) * 40)
         self.aa_dict_k = CatKernel(
-            sdev=init_p.sdev,
+            stddev=init_p.sdev,
             cholesky_lower=init_p.cholesky_lower,
         )
 
@@ -267,7 +267,7 @@ class KRRind(gpx.Module):
 
     aa_dict_k: AbstractKernel = param_field(
         CatKernel(
-            sdev=np.ones(1),
+            stddev=np.ones(1),
             cholesky_lower=(np.tril(np.ones(2 * [1])) + np.eye(1)) / 2,
         )
     )
@@ -282,10 +282,10 @@ class KRRind(gpx.Module):
 
     def __post_init__(self):
         a, b = ped.load_similarity("aa", "BLOSUM62")
-        # init_p = DictKernel.gram_to_sdev_cholesky_lower(b @ b.T)
+        # init_p = CatKernel.gram_to_stddev_cholesky_lower(b @ b.T)
         init_p = CatKernel.gram_to_sdev_cholesky_lower(b + np.eye(len(b)) * 40)
         self.aa_dict_k = gk.CatKernel(
-            sdev=init_p.sdev,
+            stddev=init_p.sdev,
             cholesky_lower=init_p.cholesky_lower,
         )
         self.aa_pos_k = self.aa_pos_k
@@ -351,7 +351,7 @@ class PositionwiseInducing(AbstractInducingPoints):
     num_pos: int = static_field(550)
     dict_k: AbstractKernel = param_field(
         CatKernel(
-            sdev=np.ones(1),
+            stddev=np.ones(1),
             cholesky_lower=(np.tril(np.ones(2 * [1])) + np.eye(1)) / 2,
         )
     )
@@ -401,7 +401,7 @@ class MultiPositionwiseInducing(AbstractInducingPoints):
     dict_k: list[AbstractKernel] = param_field(
         [
             CatKernel(
-                sdev=np.ones(1),
+                stddev=np.ones(1),
                 cholesky_lower=(np.tril(np.ones(2 * [1])) + np.eye(1)) / 2,
             )
         ]
@@ -436,7 +436,7 @@ class PosEmbInducing(AbstractInducingPoints):
     num_pos_max: int = static_field(600)
     dict_k: AbstractKernel = param_field(
         CatKernel(
-            sdev=np.ones(1),
+            stddev=np.ones(1),
             cholesky_lower=(np.tril(np.ones(2 * [1])) + np.eye(1)) / 2,
         )
     )
@@ -510,7 +510,7 @@ class MultiPosEmbInducing(AbstractInducingPoints):
     dict_k: list[AbstractKernel] = param_field(
         [
             CatKernel(
-                sdev=np.ones(1),
+                stddev=np.ones(1),
                 cholesky_lower=(np.tril(np.ones(2 * [1])) + np.eye(1)) / 2,
             )
         ]
@@ -587,7 +587,7 @@ class PosEmbInducingOld(AbstractInducingPoints):
     num_pos: int = static_field(550)
     dict_k: AbstractKernel = param_field(
         CatKernel(
-            sdev=np.ones(1),
+            stddev=np.ones(1),
             cholesky_lower=(np.tril(np.ones(2 * [1])) + np.eye(1)) / 2,
         )
     )
@@ -733,11 +733,11 @@ def test_1hot_inducing():
     import jaxopt as jo
 
     a, b = ped.load_similarity("aa", "BLOSUM62")
-    # init_p = DictKernel.gram_to_sdev_cholesky_lower(b @ b.T)
-    # init_p = DictKernel.gram_to_sdev_cholesky_lower(b + jnp.eye(len(b)) * 40)
+    # init_p = CatKernel.gram_to_stddev_cholesky_lower(b @ b.T)
+    # init_p = CatKernel.gram_to_stddev_cholesky_lower(b + jnp.eye(len(b)) * 40)
     init_p = CatKernel.gram_to_sdev_cholesky_lower(jnp.eye(len(b)) * 2)
     aa_dict_k = CatKernel(
-        sdev=init_p.sdev,
+        stddev=init_p.sdev,
         cholesky_lower=init_p.cholesky_lower,
     )
 
@@ -825,7 +825,7 @@ def test_1hot_real():
         k1, k2 = jax.random.split(key)
         sdev = jax.random.beta(k1, 1, 1, shape=(dict_size,))
         L = jax.random.beta(k2, 1, 1, shape=(dict_size, dict_size))
-        dict_k.append(gk.CatKernel(sdev=sdev, cholesky_lower=L))
+        dict_k.append(gk.CatKernel(stddev=sdev, cholesky_lower=L))
     inducing_point = gpx.MultiPosEmbInducing(
         include_bias=True,
         num_pos_inducing=D.X["aa_1hot"].shape[1] // dict_size,
