@@ -17,7 +17,7 @@ import typing as tp
 
 from jax import vmap
 import jax.numpy as jnp
-from jaxtyping import Float
+from jaxtyping import Float, Num
 
 from gpjax.kernels.computations import AbstractKernelComputation
 from gpjax.linops import (
@@ -31,7 +31,7 @@ Kernel = tp.TypeVar("Kernel", bound="gpjax.kernels.base.AbstractKernel")  # noqa
 
 class ConstantDiagonalKernelComputation(AbstractKernelComputation):
     def gram(
-        self, kernel: Kernel, x: Float[Array, "N D"]
+        self, kernel: Kernel, x: Num[Array, "N D"]
     ) -> ConstantDiagonalLinearOperator:
         r"""Compute the Gram matrix.
 
@@ -39,7 +39,7 @@ class ConstantDiagonalKernelComputation(AbstractKernelComputation):
 
         Args:
             kernel (Kernel): the kernel function.
-            x (Float[Array, "N N"]): The inputs to the kernel function.
+            x (Num[Array, "N N"]): The inputs to the kernel function.
         """
         value = kernel(x[0], x[0])
 
@@ -48,7 +48,7 @@ class ConstantDiagonalKernelComputation(AbstractKernelComputation):
         )
 
     def diagonal(
-        self, kernel: Kernel, inputs: Float[Array, "N D"]
+        self, kernel: Kernel, inputs: Num[Array, "N D"]
     ) -> DiagonalLinearOperator:
         r"""Compute the diagonal Gram matrix's entries.
 
@@ -57,7 +57,7 @@ class ConstantDiagonalKernelComputation(AbstractKernelComputation):
 
         Args:
             kernel (Kernel): the kernel function.
-            inputs (Float[Array, "N D"]): The input matrix.
+            inputs (Num[Array, "N D"]): The input matrix.
 
         Returns
         -------
@@ -68,7 +68,7 @@ class ConstantDiagonalKernelComputation(AbstractKernelComputation):
         return DiagonalLinearOperator(diag=diag)
 
     def cross_covariance(
-        self, kernel: Kernel, x: Float[Array, "N D"], y: Float[Array, "M D"]
+        self, kernel: Kernel, x: Num[Array, "N D"], y: Num[Array, "M D"]
     ) -> Float[Array, "N M"]:
         r"""Compute the cross-covariance matrix.
 
@@ -77,8 +77,8 @@ class ConstantDiagonalKernelComputation(AbstractKernelComputation):
 
         Args:
             kernel (Kernel): the kernel function.
-            x (Float[Array,"N D"]): The input matrix.
-            y (Float[Array,"M D"]): The input matrix.
+            x (Num[Array,"N D"]): The input matrix.
+            y (Num[Array,"M D"]): The input matrix.
 
         Returns
         -------

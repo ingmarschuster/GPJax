@@ -13,12 +13,15 @@ from gpjax.base import (
     static_field,
 )
 from gpjax.dataset import Dataset
-from gpjax.gaussian_distribution import GaussianDistribution
-from gpjax.linops import identity
+from gpjax.distributions import GaussianDistribution
+from gpjax.linops import identity, DenseLinearOperator
 from gpjax.typing import (
     Array,
     ScalarFloat,
 )
+
+
+from gpjax.softrank import soft_rank, soft_rank_loss, rank
 
 tfd = tfp.distributions
 
@@ -115,21 +118,69 @@ class ConjugateMLL(AbstractObjective):
             ScalarFloat: The marginal log-likelihood of the Gaussian process for the
                 current parameter set.
         """
-        x, y, n = train_data.X, train_data.y, train_data.n
+        x, y, n, mask = train_data.X, train_data.y, train_data.n, train_data.mask
+        m = y.shape[1]
+        if m > 1 and mask is not None:
+            mask = mask.flatten()
+        n_X_m = n * m
 
         # Observation noise o²
         obs_noise = posterior.likelihood.obs_noise
+
         mx = posterior.prior.mean_function(x)
 
         # Σ = (Kxx + Io²) = LLᵀ
         Kxx = posterior.prior.kernel.gram(x)
-        Kxx += identity(n) * posterior.prior.jitter
-        Sigma = Kxx + identity(n) * obs_noise
+        Kyy = posterior.prior.out_kernel.gram(jnp.arange(m)[:, jnp.newaxis])
+        Sigma = DenseLinearOperator(jnp.kron(Kxx.to_dense(), Kyy.to_dense()))
 
+        Sigma += identity(n_X_m) * (posterior.prior.jitter + obs_noise)
+
+        # flatten to handle multi-output case, then calculate
         # p(y | x, θ), where θ are the model hyperparameters:
-        mll = GaussianDistribution(jnp.atleast_1d(mx.squeeze()), Sigma)
+        mll = GaussianDistribution(jnp.atleast_1d(mx.flatten()), Sigma)
 
-        return self.constant * (mll.log_prob(jnp.atleast_1d(y.squeeze())).squeeze())
+        rval = mll.log_prob(jnp.atleast_1d(y.flatten()), mask=mask).squeeze()
+        return self.constant * rval
+
+
+@dataclass
+class ConjugateRankLoss(AbstractObjective):
+    ucb_beta: float = static_field(0.0)
+
+    def step(
+        self,
+        posterior: "gpjax.gps.ConjugatePosterior",  # noqa: F821
+        train_data: Dataset,  # noqa: F821
+    ) -> ScalarFloat:
+        train_n = train_data.n // 2
+        val_n = train_data.n - train_n
+        train_y = train_data.y[:train_n]
+        val_y = train_data.y[train_n:]
+        if not isinstance(train_data.X, dict):
+            train_x = train_data.X[:train_n]
+            val_x = train_data.X[train_n:]
+        else:
+            train_x = {k: v[:train_n] for k, v in train_data.X.items()}
+            val_x = {k: v[train_n:] for k, v in train_data.X.items()}
+
+        # Observation noise o²
+        noise = posterior.likelihood.obs_noise + posterior.prior.jitter
+        # Σ = (Kxx + Io²) = LLᵀ
+        K_tt = posterior.prior.kernel.gram(train_x) + identity(train_n) * noise
+        K_vv = posterior.prior.kernel.gram(val_x) + identity(val_n) * noise
+        K_tv = posterior.prior.kernel.cross_covariance(train_x, val_x)
+
+        pred_val_y = K_tv.T @ K_tt.solve(
+            train_y
+        )  # pred_train_y = K_tt @ K_tt.solve(train_y)
+        pred_train_y = K_tv @ K_vv.solve(val_y)
+
+        # return (soft_rank_loss(pred_val_y.squeeze(), val_y.squeeze()) + soft_rank_loss(pred_train_y.squeeze(), train_y.squeeze()))
+        return -(
+            jnp.corrcoef(pred_val_y.squeeze(), rank(val_y.squeeze()))[0, 1]
+            + jnp.corrcoef(pred_train_y.squeeze(), rank(train_y.squeeze()))[0, 1]
+        )
 
 
 class LogPosteriorDensity(AbstractObjective):

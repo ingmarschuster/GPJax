@@ -19,7 +19,7 @@ from gpjax.base import (
 )
 from gpjax.citation import cite
 from gpjax.dataset import Dataset
-from gpjax.fit import fit
+from gpjax.fit import fit, fit_jaxopt, jaxopt_objective
 from gpjax.gps import (
     Prior,
     construct_posterior,
@@ -30,6 +30,7 @@ from gpjax.kernels import (
     AbstractKernel,
     BasisFunctionComputation,
     ConstantDiagonalKernelComputation,
+    CatKernel,
     DenseKernelComputation,
     DiagonalKernelComputation,
     EigenKernelComputation,
@@ -61,6 +62,7 @@ from gpjax.objectives import (
     ConjugateMLL,
     LogPosteriorDensity,
     NonConjugateMLL,
+    ConjugateRankLoss,
 )
 from gpjax.variational_families import (
     CollapsedVariationalGaussian,
@@ -69,6 +71,21 @@ from gpjax.variational_families import (
     VariationalGaussian,
     WhitenedVariationalGaussian,
 )
+
+from gpjax.krr import KRRjax, MSEObjective
+from gpjax.krr_ind import (
+    KRRind,
+    MSEObjectiveIgnoreNan,
+    RankObjectiveIgnoreNan,
+    RidgeRegression,
+    InducingPoints,
+    AbstractInducingPoints,
+    PositionwiseInducing,
+    MultiPositionwiseInducing,
+    PosEmbInducing,
+    MultiPosEmbInducing,
+)
+from . import rkhs, softrank, krr, rpcholesky
 
 __license__ = "MIT"
 __description__ = "Didactic Gaussian processes in JAX"
@@ -82,6 +99,8 @@ __all__ = [
     "cite",
     "kernels",
     "fit",
+    "fit_jaxopt",
+    "jaxopt_objective",
     "Prior",
     "construct_posterior",
     "integrators",
@@ -97,6 +116,7 @@ __all__ = [
     "Gaussian",
     "Poisson",
     "Constant",
+    "CatKernel",
     "Zero",
     "Dataset",
     "CollapsedVariationalGaussian",
@@ -123,4 +143,16 @@ __all__ = [
     "White",
     "BasisFunctionComputation",
     "RFF",
+    "reduce",
+    "KRRjax",
+    "RidgeRegression",
+    "InducingPoints",
+    "PositionwiseInducing",
+    "AbstractInducingPoints",
+    "MSEObjective",
+    "MultiPositionwiseInducing",
+    "PosEmbInducing",
+    "MultiPosEmbInducing",
+    "MSEObjectiveIgnoreNan",
+    "RankObjectiveIgnoreNan",
 ]

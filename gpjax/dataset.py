@@ -15,10 +15,19 @@
 
 from dataclasses import dataclass
 import warnings
+from typing import TypeVar, Callable
 
-from beartype.typing import Optional
+from beartype.typing import (
+    Optional,
+    Union,
+    Literal,
+)
 import jax.numpy as jnp
-from jaxtyping import Num
+from jaxtyping import (
+    Bool,
+    Num,
+)
+import jax
 from simple_pytree import Pytree
 
 from gpjax.typing import Array
@@ -30,12 +39,19 @@ class Dataset(Pytree):
 
     Attributes
     ----------
-        X (Optional[Num[Array, "N D"]]): Input data.
-        y (Optional[Num[Array, "N Q"]]): Output data.
+        X (Optional[Num[Array, "N D"]]): input data.
+        y: (Optional[Num[Array, "N Q"]]): output data.
+        mask: (Optional[Union[Bool[Array, "N Q"], Literal["infer automatically"]]]): mask for the output data.
+            Users can optionally specify a pre-computed mask, or explicitly pass `None` which
+            means no mask will be used. Defaults to `"infer automatically"` which means that
+            the mask will be computed from the output data, or set to `None` if no output data is provided.
     """
 
     X: Optional[Num[Array, "N D"]] = None
     y: Optional[Num[Array, "N Q"]] = None
+    mask: Optional[
+        Union[Bool[Array, "N Q"], Literal["infer automatically"]]
+    ] = "infer automatically"
 
     def __post_init__(self) -> None:
         r"""Checks that the shapes of $`X`$ and $`y`$ are compatible,
@@ -43,10 +59,25 @@ class Dataset(Pytree):
         _check_shape(self.X, self.y)
         _check_precision(self.X, self.y)
 
+        if isinstance(self.mask, str):
+            if not self.mask == "infer automatically":
+                raise ValueError(
+                    f"mask must be either the string 'infer automatically', None, or a boolean array."
+                    f" Got mask={self.mask}."
+                )
+            elif self.y is not None:
+                mask = jnp.isnan(self.y)
+                if jnp.any(mask):
+                    self.mask = mask
+                else:
+                    self.mask = None
+            else:
+                self.mask = None
+
     def __repr__(self) -> str:
         r"""Returns a string representation of the dataset."""
         repr = (
-            f"- Number of observations: {self.n}\n- Input dimension:"
+            f"- Number of observations: {self.n}\n- Input dimension (sum over PyTree):"
             f" {self.in_dim}\n- Output dimension: {self.out_dim}"
         )
         return repr
@@ -63,6 +94,7 @@ class Dataset(Pytree):
         r"""Combine two datasets. Right hand dataset is stacked beneath the left."""
         X = None
         y = None
+        mask = None
 
         if self.X is not None and other.X is not None:
             X = jnp.concatenate((self.X, other.X))
@@ -70,17 +102,26 @@ class Dataset(Pytree):
         if self.y is not None and other.y is not None:
             y = jnp.concatenate((self.y, other.y))
 
-        return Dataset(X=X, y=y)
+        self_m_exists = self.mask is not None
+        other_m_exists = other.mask is not None
+        self_m = self.mask if self_m_exists else jnp.zeros(self.y.shape, dtype=bool)
+        other_m = other.mask if other_m_exists else jnp.zeros(other.y.shape, dtype=bool)
+        if self_m_exists or other_m_exists:
+            mask = jnp.concatenate((self_m, other_m))
+
+        return Dataset(X=X, y=y, mask=mask)
 
     @property
     def n(self) -> int:
         r"""Number of observations."""
-        return self.X.shape[0]
+        return jax.tree_util.tree_leaves(self.X)[0].shape[0]
 
     @property
     def in_dim(self) -> int:
         r"""Dimension of the inputs, $`X`$."""
-        return self.X.shape[1]
+        return jax.tree_util.tree_reduce(
+            lambda a, b: a + b, jax.tree_map(lambda a: a.shape[1], self.X), 0
+        )
 
     @property
     def out_dim(self) -> int:
@@ -92,21 +133,24 @@ def _check_shape(
     X: Optional[Num[Array, "..."]], y: Optional[Num[Array, "..."]]
 ) -> None:
     r"""Checks that the shapes of $`X`$ and $`y`$ are compatible."""
-    if X is not None and y is not None and X.shape[0] != y.shape[0]:
+    len_ok, X_length = _check_all_leaves_const(lambda a: len(a), len(y), X)
+    if X is not None and y is not None and not len_ok:
         raise ValueError(
             "Inputs, X, and outputs, y, must have the same number of rows."
-            f" Got X.shape={X.shape} and y.shape={y.shape}."
+            f" Got len(y)={len(y)} and len(X)={X_length}."
         )
 
-    if X is not None and X.ndim != 2:
+    dim_ok, X_dim = _check_all_leaves_const(lambda a: a.ndim, 2, X)
+    if X is not None and not dim_ok:
         raise ValueError(
-            f"Inputs, X, must be a 2-dimensional array. Got X.ndim={X.ndim}."
+            f"Inputs, X, must be a 2-dimensional array. Got X.ndim={X_dim}."
         )
 
     if y is not None and y.ndim != 2:
         raise ValueError(
             f"Outputs, y, must be a 2-dimensional array. Got y.ndim={y.ndim}."
         )
+
 
 
 def _check_precision(
@@ -126,6 +170,23 @@ def _check_precision(
             f"Got y.dtype={y.dtype}. This may lead to numerical instability.",
             stacklevel=2,
         )
+
+T = TypeVar("T")
+
+
+def _check_all_leaves_const(
+    extract_value: Callable[[any], T],
+    equal_to: T,
+    X: Optional[Union[Pytree, Num[Array, "..."]]],
+) -> bool:
+    values = jax.tree_map(extract_value, X)
+
+    return (
+        jax.tree_util.tree_reduce(
+            lambda a, b: a and b, jax.tree_map(lambda a: a == equal_to, values), True
+        ),
+        values,
+    )
 
 
 __all__ = [
